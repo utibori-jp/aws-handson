@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Go ECS Demo</title>
+</head>
+<body>
+    <h1>RDSに時刻を記録</h1>
+    <p>以下のボタンを押して、現在の時刻をデータベースに記録します。</p>
+    <button id="pushBtn">Push</button>
+
+    <script>
+        const pushBtn = document.getElementById('pushBtn');
+
+        // デスクトップ通知の許可をリクエスト
+        if (Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
+
+        pushBtn.addEventListener('click', async () => {
+            try {
+                // /record-timeエンドポイントにPOSTリクエストを送信
+                const response = await fetch('/record-time', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const message = await response.text();
+                    showNotification('成功', 'データベースへの記録に成功しました！');
+                    console.log(message);
+                } else {
+                    const errorText = await response.text();
+                    showNotification('失敗', 'リクエストが失敗しました。: ' + errorText);
+                    console.error('リクエストが失敗しました:', errorText);
+                }
+
+            } catch (error) {
+                showNotification('エラー', 'サーバーへの接続に失敗しました。');
+                console.error('エラー:', error);
+            }
+        });
+
+        function showNotification(title, body) {
+            if (Notification.permission === 'granted') {
+                new Notification(title, { body: body });
+            }
+        }
+    </script>
+</body>
+</html>
