@@ -100,8 +100,9 @@ resource "aws_s3_bucket_policy" "cloudtrail" {
         Resource = "${aws_s3_bucket.cloudtrail.arn}/AWSLogs/${local.account_id}/*"
         Condition = {
           StringEquals = {
-            # bucket-owner-full-control はログの所有権をバケット所有者（自分）に確実に渡すために必要。
-            # これを指定しないと、ログが他者（AWSサービス）の所有物になり、自分が操作できなくなるトラブルが発生する可能性がある。
+            # bucket-owner-full-control はログの所有権をバケット所有者（監査アカウントなど）に移譲するための設定。
+            # 各アカウントのCloudtrailログは、共通のこのバケットに集約される。
+            # この設定がないと、バケット所有者が自分のバケット内に他アカウントから書き込まれたログにアクセスできなくなる。
             "s3:x-amz-acl"  = "bucket-owner-full-control"
             "AWS:SourceArn" = "arn:${local.partition}:cloudtrail:${var.region}:${local.account_id}:trail/${local.trail_name}"
           }
