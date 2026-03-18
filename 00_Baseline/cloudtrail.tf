@@ -62,6 +62,52 @@ resource "aws_s3_bucket_public_access_block" "cloudtrail" {
   restrict_public_buckets = true
 }
 
+# ログの保持期間を管理するライフサイクルポリシー。
+# ストレージコストを抑えつつ、監査要件に応じた保管期間を設定する。
+# 標準ストレージ → Glacier Instant Retrieval → 削除 の 3 段階で自動的に移行する。
+#
+# Glacier Instant Retrieval を選ぶ理由:
+#   CloudTrail ログはインシデント発生時に即座に参照する必要がある。
+#   Glacier Archive（旧 Glacier）は取得に 3〜5時間 かかるため、
+#   インシデント対応には不向き。Glacier IR はミリ秒取得でありながら
+#   Standard の約 68% コスト削減が可能。SCS 試験では「取得速度 vs コスト」の
+#   トレードオフとして頻出。
+#
+# SCS 的観点: 保持期間はコンプライアンス要件（PCI DSS: 1年、HIPAA: 6年など）に合わせること。
+# このハンズオンでは学習目的で短めに設定している。
+resource "aws_s3_bucket_lifecycle_configuration" "cloudtrail" {
+  bucket = aws_s3_bucket.cloudtrail.id
+
+  rule {
+    id     = "cloudtrail-log-lifecycle"
+    status = "Enabled"
+
+    # 30日後に Glacier Instant Retrieval へ移行。
+    # 直近 30 日はアクセス頻度が高い（インシデント調査など）ため Standard に置く。
+    transition {
+      days          = 30
+      storage_class = "GLACIER_IR"
+    }
+
+    # Glacier IR 移行から 90 日後（合計 120 日）に削除。
+    # 本番では規制要件に合わせて延長すること（例: 7年保管が必要な場合は2555日）。
+    expiration {
+      days = 120
+    }
+
+    # バージョニング有効時、非現行バージョンも 30 日で削除。
+    noncurrent_version_expiration {
+      noncurrent_days = 30
+    }
+
+    # 中断されたマルチパートアップロードを 7 日後に自動削除。
+    # 放置するとストレージ料金が発生し続けるため、明示的にクリーンアップする。
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+  }
+}
+
 # CloudTrailがバケットへ書き込むために必要なバケットポリシー。
 # AWSが要求する2つのStatementを設定する（公式ドキュメント準拠）。
 resource "aws_s3_bucket_policy" "cloudtrail" {
