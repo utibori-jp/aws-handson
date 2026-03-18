@@ -13,6 +13,7 @@ override.tf.json
 # 機密情報
 *.pem
 *.key
+terraform.tfvars
 secrets.auto.tfvars
 *.auto.tfvars
 

@@ -56,6 +56,36 @@ terraform plan
 terraform apply
 ```
 
+## apply 後の動作確認
+
+### コンソール確認
+
+1. **アクセスポータル** にサインインし、`scs-handson-learner` アカウントが一覧に追加されていることを確認する
+2. **IAM Identity Center → AWS アカウント** を開き、learner アカウントに `scs-handson-learner-admin` / `scs-handson-learner-readonly` の2つの許可セットが割り当てられていることを確認する
+
+### CLI 確認
+
+プロファイルの作成方法は [docs/setup.md](../docs/setup.md)（手順6）を参照してください。
+
+#### 権限の違いを確認する
+
+```bash
+# Admin でバケットを作成（成功することを確認）
+aws s3 mb s3://scs-test-<yourname>-$(date +%Y%m%d) --profile learner-admin
+
+# ReadOnly でバケット一覧を確認（読み取りは成功することを確認）
+aws s3 ls --profile learner-readonly
+
+# ReadOnly でバケットを削除（AccessDenied になることを確認）
+aws s3 rb s3://scs-test-<yourname>-$(date +%Y%m%d) --profile learner-readonly
+# → AccessDenied: s3:DeleteBucket が許可されていないためエラーになる
+
+# Admin でバケットを削除（クリーンアップ）
+aws s3 rb s3://scs-test-<yourname>-$(date +%Y%m%d) --profile learner-admin
+```
+
+Admin は作成・一覧・削除すべて可能、ReadOnly は一覧のみ可能であることが確認できれば、許可セットが正しく機能しています。
+
 ## 次のステップ
 
 ベースラインが立ち上がったら [01_Identity_and_Access_Management](../01_Identity_and_Access_Management) へ進んでください。
