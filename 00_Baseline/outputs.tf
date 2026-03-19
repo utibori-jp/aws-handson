@@ -53,6 +53,11 @@ output "learner_account_id" {
   value       = aws_organizations_account.learner.id
 }
 
+output "sso_instance_arn" {
+  description = "ARN of the IAM Identity Center instance"
+  value       = local.sso_instance_arn
+}
+
 output "learner_admin_permission_set_arn" {
   description = "ARN of the Admin permission set for the learner account"
   value       = aws_ssoadmin_permission_set.learner_admin.arn

@@ -41,6 +41,11 @@ terraform destroy
 
 ## 00_Baseline との関係
 
-`iam-permissions-boundary` の開発者ロールは、00_Baseline の
-`${project_name}-learner` ユーザーが AssumeRole する想定で設計している。
-00_Baseline を apply 済みであることが望ましい（必須ではない）。
+`iam-permissions-boundary` は 00_Baseline の learner メンバーアカウント・SSO PermissionSet と連携できる。
+
+| 状況 | 検証方法 |
+|---|---|
+| 00_Baseline apply 済み | learner-admin PermissionSet に境界をアタッチ。AdministratorAccess でも IAM 昇格が拒否されることを確認 |
+| 00_Baseline なし | developer ロール（フォールバック）に AssumeRole して確認 |
+
+00_Baseline の output（`sso_instance_arn` / `learner_admin_permission_set_arn`）を `terraform.tfvars` に渡すことで連携が有効になる。
