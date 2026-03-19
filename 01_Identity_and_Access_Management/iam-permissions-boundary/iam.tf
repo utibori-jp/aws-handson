@@ -19,16 +19,17 @@
 #   terraform output learner_admin_permission_set_arn
 #
 # 【確認ポイント（apply 後）】
-# learner-admin SSO でサインインし、以下を試す。
+# 00_Baseline で設定した learner-admin プロファイルをそのまま使う。
 #
 # ① AdministratorAccess が付いているのに IAM 操作が拒否されることを確認
 #   aws iam create-policy --policy-name test-escalation \
-#     --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"*","Resource":"*"}]}'
+#     --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"*","Resource":"*"}]}' \
+#     --profile learner-admin
 #   # → AccessDenied が返れば境界が正しく機能している
 #
 # ② EC2/S3 操作は通ることを確認（境界内の操作はブロックされない）
-#   aws ec2 describe-instances
-#   aws s3 ls
+#   aws ec2 describe-instances --profile learner-admin
+#   aws s3 ls --profile learner-admin
 # =============================================================================
 
 # ---
@@ -90,6 +91,11 @@ resource "aws_iam_policy" "developer_boundary" {
       {
         # 【最重要】IAM 権限昇格操作を全面 Deny する。
         # Deny は Allow より優先されるため、アイデンティティポリシーで IAM を許可しても無効になる。
+        #
+        # 【なぜ Deny が必要か】
+        # 権限境界は IAM の"上限設定"であり、IAM 操作そのものは止めない。
+        # 開発者が境界ポリシー自体を差し替え・削除できる状態では境界が自己破壊するため、
+        # "境界を変更・削除する権限" を Deny することで初めて境界が堅牢になる。
         #
         # 防いでいる攻撃パターン：
         #   1. 新しいポリシーを作成してロール/ユーザー/グループにアタッチする
