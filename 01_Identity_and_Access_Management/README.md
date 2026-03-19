@@ -41,11 +41,13 @@ terraform destroy
 
 ## 00_Baseline との関係
 
-`iam-permissions-boundary` は 00_Baseline の learner メンバーアカウント・SSO PermissionSet と連携できる。
+`iam-permissions-boundary` は **00_Baseline が apply 済みであることが必須**。
+learner-admin PermissionSet（AdministratorAccess）に境界を直接アタッチし、
+「Admin 権限でも IAM 昇格操作は拒否される」ことを確認する。
 
-| 状況 | 検証方法 |
-|---|---|
-| 00_Baseline apply 済み | learner-admin PermissionSet に境界をアタッチ。AdministratorAccess でも IAM 昇格が拒否されることを確認 |
-| 00_Baseline なし | developer ロール（フォールバック）に AssumeRole して確認 |
+00_Baseline の output から以下の値を取得して `terraform.tfvars` に設定すること。
 
-00_Baseline の output（`sso_instance_arn` / `learner_admin_permission_set_arn`）を `terraform.tfvars` に渡すことで連携が有効になる。
+```
+sso_instance_arn                 = "<terraform output sso_instance_arn>"
+learner_admin_permission_set_arn = "<terraform output learner_admin_permission_set_arn>"
+```

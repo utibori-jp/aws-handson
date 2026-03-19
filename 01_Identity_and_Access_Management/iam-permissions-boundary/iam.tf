@@ -10,39 +10,26 @@
 # - 開発者が自分の権限を昇格させる「権限昇格攻撃」を防ぐ仕組み
 # - SCS頻出：「最小権限原則をエンフォースする管理的コントロール」
 #
-# 【検証方法】
-# ─ メイン（00_Baseline の learner アカウントを使う場合）──────────────────
-# 1. variables.tf のコメントを参考に sso_instance_arn と
-#    learner_admin_permission_set_arn を terraform.tfvars に設定する
-# 2. learner-admin SSO プロファイルを使って apply する
-#      terraform apply -var aws_profile=learner-admin
-# 3. IAM Identity Center の learner-admin でサインインし、以下を試す
+# 【前提条件】
+# 00_Baseline が apply 済みであること。
+# sso_instance_arn / learner_admin_permission_set_arn を terraform.tfvars に設定する。
 #
-#    ① AdministratorAccess が付いているのに IAM 操作が拒否されることを確認
-#       aws iam create-policy --policy-name test-escalation \
-#         --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"*","Resource":"*"}]}'
-#       # → AccessDenied が返れば境界が正しく機能している
+#   cd ../../00_Baseline
+#   terraform output sso_instance_arn
+#   terraform output learner_admin_permission_set_arn
 #
-#    ② EC2/S3 操作は通ることを確認（境界内の操作はブロックされない）
-#       aws ec2 describe-instances
-#       aws s3 ls
+# 【確認ポイント（apply 後）】
+# learner-admin SSO でサインインし、以下を試す。
 #
-# ─ フォールバック（learner アカウントなし）─────────────────────────────────
-# SSO 変数を指定しなければ PermissionSet アタッチはスキップされる。
-# 代わりに developer ロール（terraform-sso と同一アカウント）が作成されるので、
-# terraform-sso の認証情報から AssumeRole して同様の検証ができる。
+# ① AdministratorAccess が付いているのに IAM 操作が拒否されることを確認
+#   aws iam create-policy --policy-name test-escalation \
+#     --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"*","Resource":"*"}]}'
+#   # → AccessDenied が返れば境界が正しく機能している
 #
-#   ROLE_ARN=$(terraform output -raw developer_role_arn)
-#   aws sts assume-role --role-arn $ROLE_ARN --role-session-name test \
-#     --query 'Credentials' --output json
-#   # → 取得した一時クレデンシャルを export してから上記の aws iam create-policy を試す
+# ② EC2/S3 操作は通ることを確認（境界内の操作はブロックされない）
+#   aws ec2 describe-instances
+#   aws s3 ls
 # =============================================================================
-
-locals {
-  sso_configured = (
-    var.sso_instance_arn != null && var.learner_admin_permission_set_arn != null
-  )
-}
 
 # ---
 # 権限境界ポリシー
@@ -141,18 +128,13 @@ resource "aws_iam_policy" "developer_boundary" {
 }
 
 # ---
-# メイン: learner-admin PermissionSet への境界アタッチ
+# learner-admin PermissionSet への境界アタッチ
 # ---
 
 # AdministratorAccess を持つ learner-admin PermissionSet に境界を設定することで、
 # 「Admin 権限を持っていても IAM 昇格操作はできない」という
 # 権限境界の効果を直接体感できる。
-#
-# sso_instance_arn / learner_admin_permission_set_arn が未指定の場合はスキップする。
-# その場合は下記の developer ロールを使ったフォールバック検証を参照。
 resource "aws_ssoadmin_permissions_boundary_attachment" "learner_admin" {
-  count = local.sso_configured ? 1 : 0
-
   instance_arn       = var.sso_instance_arn
   permission_set_arn = var.learner_admin_permission_set_arn
 
@@ -163,49 +145,4 @@ resource "aws_ssoadmin_permissions_boundary_attachment" "learner_admin" {
       path = "/"
     }
   }
-}
-
-# ---
-# フォールバック: developer ロール（learner アカウント不使用時）
-# ---
-
-# learner アカウントなしで検証したい場合に使用する。
-# trust policy は同一アカウントのルートを信頼するため、
-# terraform-sso の認証情報から直接 AssumeRole できる。
-data "aws_iam_policy_document" "developer_assume_role" {
-  statement {
-    sid     = "AllowSameAccountAssumeRole"
-    effect  = "Allow"
-    actions = ["sts:AssumeRole"]
-
-    principals {
-      type = "AWS"
-      # アカウント全体を信頼元にする（ルート ARN）。
-      # ソースアカウント側でアイデンティティポリシーにより「誰が引き受けられるか」を制御する。
-      identifiers = ["arn:${local.partition}:iam::${local.account_id}:root"]
-    }
-  }
-}
-
-resource "aws_iam_role" "developer" {
-  name               = "${var.project_name}-developer"
-  assume_role_policy = data.aws_iam_policy_document.developer_assume_role.json
-
-  # 権限境界を設定する。
-  # この1行が「このロールの有効権限 = PowerUserAccess ∩ developer_boundary」を保証する。
-  permissions_boundary = aws_iam_policy.developer_boundary.arn
-
-  tags = {
-    Name = "${var.project_name}-developer"
-  }
-}
-
-# 開発者ロールのアイデンティティポリシー（広い権限）。
-# PowerUserAccess は IAM 以外のほぼ全操作を許可する広いポリシーだが、
-# 権限境界によって有効権限は EC2/S3/CloudWatch Logs の限定操作に絞られる。
-# 「広いアイデンティティポリシー + 厳しい境界」という組み合わせは、
-# 境界を一元管理したい大規模組織でよく使われるパターン。
-resource "aws_iam_role_policy_attachment" "developer_poweruser" {
-  role       = aws_iam_role.developer.name
-  policy_arn = "arn:aws:iam::aws:policy/PowerUserAccess"
 }

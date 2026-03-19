@@ -25,25 +25,20 @@ variable "project_name" {
 }
 
 # ---
-# 00_Baseline 連携（任意）
+# 00_Baseline 連携（必須）
 # ---
-# 以下の2変数を指定すると、developer_boundary を learner-admin PermissionSet に直接アタッチする。
-# 00_Baseline の terraform output で取得できる値を使用する。
+# 以下の値は 00_Baseline の terraform output から取得する。
 #
-#   sso_instance_arn=$(cd ../../00_Baseline && terraform output -raw sso_instance_arn)
-#   learner_admin_permission_set_arn=$(cd ../../00_Baseline && terraform output -raw learner_admin_permission_set_arn)
-#
-# 指定しない場合（null のまま）は PermissionSet アタッチをスキップする。
-# その場合は下記フォールバック（developer ロールへの AssumeRole）で検証できる。
+#   cd ../../00_Baseline
+#   terraform output sso_instance_arn
+#   terraform output learner_admin_permission_set_arn
 
 variable "sso_instance_arn" {
-  description = "ARN of the IAM Identity Center instance (from 00_Baseline). Required to attach the boundary to the learner-admin PermissionSet."
+  description = "ARN of the IAM Identity Center instance (from 00_Baseline: terraform output sso_instance_arn)"
   type        = string
-  default     = null
 }
 
 variable "learner_admin_permission_set_arn" {
-  description = "ARN of the learner-admin PermissionSet (from 00_Baseline). Required to attach the boundary to the learner-admin PermissionSet."
+  description = "ARN of the learner-admin PermissionSet (from 00_Baseline: terraform output learner_admin_permission_set_arn)"
   type        = string
-  default     = null
 }
