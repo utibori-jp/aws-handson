@@ -1,0 +1,3 @@
+# 00_Baseline の output から取得する
+# cd ../../00_Baseline && terraform output learner_account_id
+learner_account_id = "123456789012"
