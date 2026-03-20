@@ -25,11 +25,16 @@
 #   aws iam create-policy --policy-name test-escalation \
 #     --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"*","Resource":"*"}]}' \
 #     --profile learner-admin
-#   # → AccessDenied が返れば境界が正しく機能している
+#   → AccessDenied が返れば境界が正しく機能している
 #
 # ② EC2/S3 操作は通ることを確認（境界内の操作はブロックされない）
 #   aws ec2 describe-instances --profile learner-admin
 #   aws s3 ls --profile learner-admin
+# ③ 明示的に許可されていない操作（暗黙のDeny）がブロックされることを確認
+#   Identity Policy（AdministratorAccess）で許可されていても、
+#   境界内でAllowされていないため拒否される。
+#   aws ecs list-clusters --profile learner-admin
+#   → AccessDeniedException が返れば正しく機能している
 # =============================================================================
 
 # ---
@@ -40,7 +45,19 @@
 # このポリシーが境界として設定されたエンティティは、ここに列挙した操作しか実行できない。
 # アイデンティティポリシーでより広い権限（AdministratorAccess 等）を付与しても、
 # 境界を超えた操作は拒否される。
+#
+# 【なぜ aws.learner プロバイダで作成するか】
+# aws_ssoadmin_permissions_boundary_attachment の customer_managed_policy_reference は、
+# PermissionSet がアサインされているアカウント（Learner アカウント）にポリシーが
+# 存在することを要求する。デフォルトプロバイダ（管理アカウント）で作成すると
+# SSO が参照できずエラーになる。
+#
+# 【destroy の安全性】
+# Terraform の依存グラフにより、SSO attachment → IAM policy の順で破棄される。
+# IAM policy の削除は OrganizationAccountAccessRole（境界の影響を受けない）で実行されるため、
+# learner-admin の権限境界に DenyIAMEscalation があっても destroy が止まらない。
 resource "aws_iam_policy" "developer_boundary" {
+  provider    = aws.learner
   name        = "${var.project_name}-developer-boundary"
   description = "Permissions boundary for developer roles — caps effective permissions to prevent privilege escalation"
 

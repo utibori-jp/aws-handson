@@ -29,3 +29,26 @@ provider "aws" {
     }
   }
 }
+
+provider "aws" {
+  alias   = "learner"
+  region  = var.region
+  profile = var.aws_profile
+
+  # terraform-sso（管理アカウント）から OrganizationAccountAccessRole 経由で
+  # Learner アカウントにリソースを作成する。
+  # このロールは Organizations が member account 作成時に自動生成する（境界なし）。
+  # learner-admin とは異なり permissions boundary の影響を受けないため、
+  # destroy 時も安全に IAM ポリシーを削除できる。
+  assume_role {
+    role_arn = "arn:aws:iam::${var.learner_account_id}:role/OrganizationAccountAccessRole"
+  }
+
+  default_tags {
+    tags = {
+      Project     = var.project_name
+      ManagedBy   = "Terraform"
+      Environment = "SCS-Study"
+    }
+  }
+}

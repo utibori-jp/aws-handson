@@ -42,3 +42,8 @@ variable "learner_admin_permission_set_arn" {
   description = "ARN of the learner-admin PermissionSet (from 00_Baseline: terraform output learner_admin_permission_set_arn)"
   type        = string
 }
+
+variable "learner_account_id" {
+  description = "AWS account ID of the Learner account where developer_boundary policy will be created (from 00_Baseline: terraform output learner_account_id)"
+  type        = string
+}
