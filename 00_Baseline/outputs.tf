@@ -53,6 +53,11 @@ output "learner_account_id" {
   value       = aws_organizations_account.learner.id
 }
 
+output "peer_account_id" {
+  description = "AWS account ID of the peer member account"
+  value       = aws_organizations_account.peer.id
+}
+
 output "sso_instance_arn" {
   description = "ARN of the IAM Identity Center instance"
   value       = local.sso_instance_arn

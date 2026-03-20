@@ -37,6 +37,13 @@ variable "learner_account_email" {
   type        = string
 }
 
+# peer メンバーアカウントに割り当てるメールアドレス。
+# learner_account_email と同様、Gmail エイリアス機能（user+peer@gmail.com）が手軽でおすすめ。
+variable "peer_account_email" {
+  description = "Email address for the peer Organizations member account (must be globally unique)"
+  type        = string
+}
+
 # IAM Identity Center コンソールの「ユーザー」画面で確認できるユーザー名。
 # 通常はメールアドレス形式（例: user@example.com）。
 # terraform-sso のサインインに使用しているユーザーと同じで問題ない。

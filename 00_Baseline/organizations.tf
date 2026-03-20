@@ -86,6 +86,44 @@ resource "aws_ssoadmin_managed_policy_attachment" "learner_readonly" {
 }
 
 # ---
+# Peer メンバーアカウント
+# ---
+
+# クロスアカウントアクセスや複数アカウント検証に使用する汎用メンバーアカウント。
+# cross-account-role での AssumeRole 先として使用するほか、
+# 複数アカウントが必要な検証（Security Hub 集約等）にも利用できる。
+resource "aws_organizations_account" "peer" {
+  name  = "${var.project_name}-peer"
+  email = var.peer_account_email
+
+  close_on_deletion = true
+
+  tags = {
+    Name = "${var.project_name}-peer"
+  }
+}
+
+# learner と同じ Permission Set を peer アカウントにも割り当てる。
+# Identity Center ユーザーが peer アカウントへ Admin / ReadOnly でサインインできるようにする。
+resource "aws_ssoadmin_account_assignment" "peer_admin" {
+  instance_arn       = local.sso_instance_arn
+  permission_set_arn = aws_ssoadmin_permission_set.learner_admin.arn
+  principal_id       = data.aws_identitystore_user.main.user_id
+  principal_type     = "USER"
+  target_id          = aws_organizations_account.peer.id
+  target_type        = "AWS_ACCOUNT"
+}
+
+resource "aws_ssoadmin_account_assignment" "peer_readonly" {
+  instance_arn       = local.sso_instance_arn
+  permission_set_arn = aws_ssoadmin_permission_set.learner_readonly.arn
+  principal_id       = data.aws_identitystore_user.main.user_id
+  principal_type     = "USER"
+  target_id          = aws_organizations_account.peer.id
+  target_type        = "AWS_ACCOUNT"
+}
+
+# ---
 # Account Assignments — learner アカウントへの割り当て
 # ---
 
