@@ -16,7 +16,14 @@ locals {
 
 provider "aws" {
   region  = var.region
-  profile = var.aws_profile
+  profile = var.aws_profile  # terraform-sso（管理アカウント）で認証
+
+  # リソースの着地先を learner アカウントに切り替える。
+  # provider は「認証したロールが属するアカウント」にリソースを作るため、
+  # このブロックがないと管理アカウントにリソースが作られてしまう。
+  assume_role {
+    role_arn = "arn:aws:iam::${var.learner_account_id}:role/OrganizationAccountAccessRole"
+  }
 
   default_tags {
     tags = {

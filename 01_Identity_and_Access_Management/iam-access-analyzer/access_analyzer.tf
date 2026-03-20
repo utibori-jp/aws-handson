@@ -30,7 +30,7 @@ resource "aws_accessanalyzer_analyzer" "account" {
   # ACCOUNT タイプ：同一アカウント内のリソースポリシーを解析し、
   # アカウント外部からアクセス可能なリソースを検出する。
   # ORGANIZATION タイプを使うと Organizations 全体を信頼ゾーンにできるが、
-  # 管理アカウントが必要なため本モジュールでは ACCOUNT を使用する。
+  # 本モジュールは learner メンバーアカウントで動くため ACCOUNT を使用する。
   type = "ACCOUNT"
 
   tags = {
