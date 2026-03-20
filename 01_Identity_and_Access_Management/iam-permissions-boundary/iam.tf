@@ -20,21 +20,23 @@
 #
 # 【確認ポイント（apply 後）】
 # 00_Baseline で設定した learner-admin プロファイルをそのまま使う。
+# 他の実験でもlearner-adminプロファイルを利用するため本実験後はdestroyすること。
 #
 # ① AdministratorAccess が付いているのに IAM 操作が拒否されることを確認
 #   aws iam create-policy --policy-name test-escalation \
 #     --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"*","Resource":"*"}]}' \
 #     --profile learner-admin
-#   → AccessDenied が返れば境界が正しく機能している
 #
 # ② EC2/S3 操作は通ることを確認（境界内の操作はブロックされない）
 #   aws ec2 describe-instances --profile learner-admin
 #   aws s3 ls --profile learner-admin
+#
 # ③ 明示的に許可されていない操作（暗黙のDeny）がブロックされることを確認
 #   Identity Policy（AdministratorAccess）で許可されていても、
 #   境界内でAllowされていないため拒否される。
 #   aws ecs list-clusters --profile learner-admin
-#   → AccessDeniedException が返れば正しく機能している
+#
+# ④ terraform destroy でクリーンアップ
 # =============================================================================
 
 # ---
