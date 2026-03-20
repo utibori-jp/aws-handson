@@ -5,14 +5,25 @@
 # このバケットはデフォルトで「パブリックアクセスブロック有効」で作成する。
 # 下記の手順で Access Analyzer の検出動作を体験できる。
 #
-# 【演習手順（terraform apply 後）】
-# 1. このバケットは非公開状態で作成される（Access Analyzer に検出されない）
-# 2. マネジメントコンソールでパブリックアクセスブロックを手動で無効化する
-# 3. バケットポリシーで以下のようなパブリック読み取りポリシーを付与する：
-#      {"Effect":"Allow","Principal":"*","Action":"s3:GetObject","Resource":"<arn>/*"}
-# 4. Access Analyzer が数分以内に「アクティブ」フィンディングを生成することを確認する
-# 5. フィンディングの「アクセス許可」タブで、どのポリシーが原因かを確認する
-# 6. terraform destroy でクリーンアップ（force_destroy = true のため削除可能）
+# 【確認ポイント（terraform apply 後）】
+# 1. このバケットは非公開状態で作成される（learner アカウント内）
+# 2. パブリックアクセスブロックを CLI で解除する
+#    ※ この手順だけでは Access Analyzer は検知しない。ブロックを外しても実際にアクセスを許可するポリシーがないため。
+#    aws s3api put-public-access-block --bucket scs-handson-analyzer-test \
+#      --public-access-block-configuration \
+#        BlockPublicAcls=false,IgnorePublicAcls=false,BlockPublicPolicy=false,RestrictPublicBuckets=false \
+#      --profile learner-admin
+# 3. バケットポリシーでパブリック読み取りポリシーを付与する
+#    ※ この手順だけでは実行できない。パブリックアクセスブロックが有効な状態でパブリックポリシーを put するとエラーになる。
+#    aws s3api put-bucket-policy --bucket scs-handson-analyzer-test \
+#      --policy '{"Statement":[{"Effect":"Allow","Principal":"*","Action":"s3:GetObject","Resource":"arn:aws:s3:::scs-handson-analyzer-test/*"}]}' \
+#      --profile learner-admin
+# 4. Access Analyzer のフィンディングを確認する（数分待つ）
+#    # Analyzer 自体の ARN を取得する
+#    aws accessanalyzer list-analyzers --profile learner-readonly
+#    # フィンディングを一覧する（上記で取得した arn を指定）
+#    aws accessanalyzer list-findings-v2 --analyzer-arn <analyzer-arn> --profile learner-readonly
+# 5. terraform destroy でクリーンアップ
 # =============================================================================
 
 resource "aws_s3_bucket" "analyzer_test" {
