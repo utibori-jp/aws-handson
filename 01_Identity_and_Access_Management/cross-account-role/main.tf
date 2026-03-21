@@ -1,35 +1,29 @@
 # =============================================================================
 # main.tf
-# 2つの AWS プロバイダを定義する：
-#   - default: ソースアカウント（ロールを引き受ける側）
-#   - aws.target: ターゲットアカウント（ロールが存在する側）
-#
-# 【前提条件】
-# - `aws configure sso` で source_profile / target_profile を設定済みであること
-# - 詳細は README.md を参照
+# プロバイダ設定。terraform-sso（管理アカウント）で認証し、
+# OrganizationAccountAccessRole 経由で learner / peer アカウントにリソースを作成する。
 # =============================================================================
 
-# ソースアカウントの ID を取得する（デフォルトプロバイダ）。
-data "aws_caller_identity" "source" {}
-
-# ターゲットアカウントの ID を取得する（エイリアスプロバイダ）。
-data "aws_caller_identity" "target" {
-  provider = aws.target
-}
-
 locals {
-  source_account_id = data.aws_caller_identity.source.account_id
-  target_account_id = data.aws_caller_identity.target.account_id
+  learner_account_id = var.learner_account_id
+  peer_account_id    = var.peer_account_id
 
   # パーティションは東京リージョン（標準商用AWS）を前提に "aws" で固定する。
   partition = "aws"
 }
 
-# ソースアカウント用プロバイダ（デフォルト）。
-# このアカウントに caller ユーザーと AssumeRole 権限ポリシーを作成する。
+# learner アカウント用プロバイダ（デフォルト）。
+# このアカウントに caller ロールと AssumeRole 権限ポリシーを作成する。
 provider "aws" {
   region  = var.region
-  profile = var.source_profile
+  profile = var.aws_profile  # terraform-sso（管理アカウント）で認証
+
+  # リソースの着地先を learner アカウントに切り替える。
+  # provider は「認証したロールが属するアカウント」にリソースを作るため、
+  # このブロックがないと管理アカウントにリソースが作られてしまう。
+  assume_role {
+    role_arn = "arn:aws:iam::${var.learner_account_id}:role/OrganizationAccountAccessRole"
+  }
 
   default_tags {
     tags = {
@@ -40,13 +34,20 @@ provider "aws" {
   }
 }
 
-# ターゲットアカウント用プロバイダ（エイリアス付き）。
+# peer アカウント用プロバイダ（エイリアス付き）。
 # このアカウントに cross-account ロールと信頼ポリシーを作成する。
-# alias = "target" と指定したリソースでは provider = aws.target を明示する。
+# provider = aws.peer を明示したリソースがこのアカウントに作成される。
 provider "aws" {
-  alias   = "target"
+  alias   = "peer"
   region  = var.region
-  profile = var.target_profile
+  profile = var.aws_profile  # terraform-sso（管理アカウント）で認証
+
+  # リソースの着地先を peer アカウントに切り替える。
+  # alias = "peer" を付与したこのプロバイダを provider = aws.peer で参照することで、
+  # learner／peer の2アカウントに同一の apply でリソースを作り分けられる。
+  assume_role {
+    role_arn = "arn:aws:iam::${var.peer_account_id}:role/OrganizationAccountAccessRole"
+  }
 
   default_tags {
     tags = {
