@@ -44,10 +44,10 @@ resource "aws_organizations_policy" "deny_root_actions" {
   }
 }
 
-# SCP を対象 OU にアタッチする。
+# SCP を対象 OU（または Org ルート）にアタッチする。
 # OU 配下の全メンバーアカウントにこの SCP が適用される。
-# terraform plan のみ実行する場合、target_ou_id がダミー値でも plan は通る。
+# target_id は local.target_id（main.tf）で解決する。
 resource "aws_organizations_policy_attachment" "deny_root_actions" {
   policy_id = aws_organizations_policy.deny_root_actions.id
-  target_id = var.target_ou_id
+  target_id = local.target_id
 }

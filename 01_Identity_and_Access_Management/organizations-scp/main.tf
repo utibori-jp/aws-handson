@@ -2,21 +2,29 @@
 # main.tf
 # Organizations 管理アカウント用のプロバイダ設定。
 # SCP の作成・アタッチには管理アカウントの認証情報が必要。
+# 00_Baseline が apply 済みであることが前提（terraform-sso プロファイルで管理アカウントに接続）。
 # =============================================================================
 
 # 管理アカウントの ID を確認用に取得する。
 data "aws_caller_identity" "current" {}
+
+# SCP のアタッチ先となる Organizations のルート ID を取得する。
+# target_ou_id が未指定の場合は Org ルートをデフォルトのアタッチ先とする。
+data "aws_organizations_organization" "main" {}
 
 locals {
   account_id = data.aws_caller_identity.current.account_id
 
   # パーティションは東京リージョン（標準商用AWS）を前提に "aws" で固定する。
   partition = "aws"
+
+  # target_ou_id が指定されていれば OU に、未指定なら Org ルートにアタッチする。
+  target_id = coalesce(var.target_ou_id, data.aws_organizations_organization.main.roots[0].id)
 }
 
 provider "aws" {
   region  = var.region
-  profile = var.management_profile
+  profile = var.aws_profile
 
   default_tags {
     tags = {

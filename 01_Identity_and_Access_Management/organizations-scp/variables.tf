@@ -3,11 +3,11 @@
 # 本モジュール全体で使用する入力変数。
 # =============================================================================
 
-# Organizations 管理アカウントの AWS CLI プロファイル。
-variable "management_profile" {
+# 管理アカウントの AWS CLI プロファイル。他モジュールと命名を統一している。
+variable "aws_profile" {
   description = "AWS CLI profile for the Organizations management account"
   type        = string
-  default     = "management-sso"
+  default     = "terraform-sso"
 }
 
 variable "region" {
@@ -23,10 +23,11 @@ variable "project_name" {
 }
 
 # SCP をアタッチする対象の OU ID。
-# 例: ou-xxxx-xxxxxxxx（マネジメントコンソール > Organizations > OU の詳細から確認）
-# terraform plan のみ実行する場合はダミー値のままでよい。
+# 未指定（null）の場合は Org ルート（r-xxxx）が自動的に使われる（main.tf の local.target_id 参照）。
+# 特定の OU に限定したい場合は terraform.tfvars で指定する。
+# 例: target_ou_id = "ou-xxxx-xxxxxxxx"
 variable "target_ou_id" {
-  description = "ID of the Organizations OU to attach SCPs to (e.g. ou-xxxx-xxxxxxxx)"
+  description = "ID of the Organizations OU to attach SCPs to. If null, defaults to the Org root (from aws_organizations_organization data source)"
   type        = string
-  default     = "ou-xxxx-xxxxxxxx"
+  default     = null
 }

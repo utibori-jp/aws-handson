@@ -67,8 +67,9 @@ resource "aws_organizations_policy" "region_guardrail" {
   }
 }
 
-# SCP を対象 OU にアタッチする。
+# SCP を対象 OU（または Org ルート）にアタッチする。
+# target_id は local.target_id（main.tf）で解決する。
 resource "aws_organizations_policy_attachment" "region_guardrail" {
   policy_id = aws_organizations_policy.region_guardrail.id
-  target_id = var.target_ou_id
+  target_id = local.target_id
 }
