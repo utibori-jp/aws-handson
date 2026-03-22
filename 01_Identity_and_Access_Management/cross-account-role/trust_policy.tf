@@ -19,17 +19,28 @@
 #   terraform output peer_account_id
 #
 # 【確認ポイント（terraform apply 後）】
-# 1. peer アカウントの cross-account ロールを引き受ける
+# terraform output で cross_account_role_arn と secret_s3_uri を控えておく。
+#
+# ① AssumeRole なし →  peer アカウントの権限を持たなめ失敗することを確認
+#    aws s3 cp <secret_s3_uri> - --profile learner-admin
+#    # → An error occurred (403) when calling the HeadObject operation: Forbidden
+#
+# ② cross-account ロールを引き受ける
 #    aws sts assume-role \
 #      --role-arn <cross_account_role_arn> \
 #      --role-session-name cross-account-test \
 #      --profile learner-admin
-# 2. 取得した一時認証情報を環境変数にセットする
+#
+# ③ 取得した一時認証情報を環境変数にセットする
 #    export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_SESSION_TOKEN=...
-# 3. peer アカウントのリソースを ReadOnly 参照できることを確認する
-#    aws sts get-caller-identity   # peer アカウントの account ID が表示される
-#    aws s3 ls
-# 4. terraform destroy でクリーンアップ
+#
+# ④ AssumeRole 後 → 成功することを確認
+#    aws sts get-caller-identity       # peer アカウントの account ID が表示される
+#    aws s3 cp <secret_s3_uri> -       # "This is a secret message from Peer Account!" が表示される
+#
+# ⑤ terraform destroy でクリーンアップ
+#    先にセットした一時認証情報を削除すること
+#    unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
 #
 # ※ 繰り返し検証する場合は ~/.aws/config に named profile を設定すると
 #    --profile cross-account-peer 一発で済む。
@@ -83,10 +94,19 @@ data "aws_iam_policy_document" "cross_account_trust" {
       identifiers = ["arn:${local.partition}:iam::${local.learner_account_id}:root"]
     }
 
-    # ExternalId：サードパーティ連携時に必須のセキュリティ対策。
-    # 悪意ある第三者が別の顧客の信頼ポリシーを悪用して AssumeRole する
-    # 「混乱した使節（Confused Deputy）攻撃」を防ぐ。
-    # ハンズオンでは学習目的でコメントアウトするが、本番では必ず設定すること。
+    # ExternalId：サードパーティ（ISV）連携時に設定する追加条件。
+    # SCS頻出：「Confused Deputy（混乱した代理人）問題」を防ぐ。
+    #
+    # 【攻撃シナリオ】
+    #   顧客A が ISV に自社ロール ARN を渡して連携する。
+    #   悪意ある顧客B が「顧客AのロールARN」を ISV に渡すと、
+    #   ISV（= 信頼された代理人）経由で顧客Aのリソースに不正アクセスできてしまう。
+    #
+    # 【ExternalId による防御】
+    #   ISV が顧客ごとに発行した一意の値を信頼ポリシーの条件に設定する。
+    #   ロールARNを知っていても ExternalId が一致しないと AssumeRole を拒否できる。
+    #   SCS問題でよく問われる：「ExternalId を使うのはいつか？」
+    #   → 自社→自社の AssumeRole では不要。第三者（ISV など）に委任するときに必要。
     # condition {
     #   test     = "StringEquals"
     #   variable = "sts:ExternalId"

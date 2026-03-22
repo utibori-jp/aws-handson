@@ -15,6 +15,11 @@ output "assume_role_command" {
   value       = "aws sts assume-role --role-arn ${aws_iam_role.cross_account.arn} --role-session-name cross-account-test --profile learner-admin"
 }
 
+output "secret_s3_uri" {
+  description = "S3 URI of the secret file in the peer account"
+  value       = "s3://${aws_s3_bucket.peer_demo.id}/secret.txt"
+}
+
 # ---
 # 確認用情報
 # ---
