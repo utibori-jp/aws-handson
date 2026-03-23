@@ -2,6 +2,13 @@
 # scp_region_guardrail.tf — organizations-scp
 # ap-northeast-1（東京）以外のリージョンへのリソース作成を禁止する SCP。
 #
+# 【SCS頻出ユースケース 2パターンの位置付け】
+# このモジュールは以下の 2 つのガードレール SCP を実装する（実務ではさらに多くの SCP を組み合わせる）。：
+#   1. ルート制限 (scp_root_restriction.tf)
+#      → ルートユーザーの技術的エンフォース。IAM では制限できない領域をカバー。
+#   2. リージョン制限 (このファイル)
+#      → データレジデンシー・コスト管理・監視範囲の限定。
+#
 # 【なぜリージョンを制限するか】
 # 意図しないリージョンへのリソース作成を防ぎ、データレジデンシー要件への準拠と
 # コスト管理・セキュリティ監視の範囲を限定する。
@@ -12,6 +19,17 @@
 # グローバルサービスであり、aws:RequestedRegion 条件の対象外になる場合がある。
 # ただし Terraform で明示的に NotAction で除外しておくことで、
 # 意図しない拒否（Deny）によるオペレーション障害を防ぐ。
+#
+# 【確認ポイント】
+# learner-admin プロファイルで us-east-1 に S3 バケット作成を試みる。
+# SCP が適用されていれば AccessDenied になることを確認できる。
+#
+#   aws s3api create-bucket \
+#     --bucket test-region-guardrail-$(date +%s) \
+#     --region us-east-1 \
+#     --create-bucket-configuration LocationConstraint=us-east-1 \
+#     --profile learner-admin
+#   # → An error occurred (AccessDenied) が返れば OK
 # =============================================================================
 
 resource "aws_organizations_policy" "region_guardrail" {
