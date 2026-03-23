@@ -1,0 +1,10 @@
+# terraform.tfvars.example
+# このファイルをコピーして terraform.tfvars を作成し、実際の値を入力してください。
+# terraform.tfvars は .gitignore 対象です。コミットしないでください。
+
+# target_ou_id は省略可能です。
+# 省略した場合は Organizations のルートに SCP がアタッチされ、全メンバーアカウントに適用されます。
+# 特定の OU に限定したい場合は以下のコメントを外して OU ID を指定してください。
+# OU ID はマネジメントコンソール > AWS Organizations > OU の詳細から確認できます。
+
+target_ou_id = "ou-xxxx-xxxxxxxx"

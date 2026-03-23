@@ -1,0 +1,21 @@
+# terraform.tfvars.example
+# このファイルをコピーして terraform.tfvars を作成し、実際の値を入力してください。
+# terraform.tfvars は .gitignore 対象です。コミットしないでください。
+
+# Organizations メンバーアカウント（learner）に割り当てるメールアドレス。
+# AWS アカウントのメールアドレスはグローバルでユニークである必要があります。
+# Gmail などのエイリアス（user+learner@gmail.com）が便利です。
+learner_account_email = "yourname+learner@example.com"
+
+# Organizations メンバーアカウント（peer）に割り当てるメールアドレス。
+# learner_account_email と同様、Gmail エイリアス（user+peer@gmail.com）が便利です。
+peer_account_email    = "yourname+peer@example.com"
+
+# IAM Identity Center のユーザー名（通常はメールアドレス形式）。
+# Identity Center コンソールの「ユーザー」画面で確認できます。
+sso_username          = "yourname@example.com"
+
+# リソース名や S3 バケット名のプレフィックス。
+# 共有アカウントで実行する場合は既存リソースと衝突しないよう変更してください。
+# デフォルト値（scs-handson）のままでよければ省略可。
+# project_name = "scs-handson"
