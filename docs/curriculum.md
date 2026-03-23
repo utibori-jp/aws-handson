@@ -5,15 +5,15 @@
 学習期間中、常時維持するベースライン環境。NAT Gatewayなど時間課金が発生するリソースは排除。
 
 * vpc-base: VPC、サブネット（パブリック/プライベート）、インターネットゲートウェイ。
-* cloudtrail-base: CloudTrail証跡の有効化とS3バケットへのログ集約。
-* iam-base: Terraform実行用の一時権限ロールや、学習用IAMユーザーのベース作成。
+* cloudtrail-base: 管理アカウントのローカル証跡（マルチリージョン・ログ改ざん検証）とS3バケットへのログ集約。
+* organizations: AWS OrganizationsでlearnerとpeerのメンバーアカウントをOUに配置し、IAM Identity Center（SSO）のPermissionSetを割り当て。
 
 ## 01_Identity_and_Access_Management (IAMとアクセス管理)
 
-* cross-account-role: 別アカウントへのAssumeRole（信頼ポリシーの設定と権限委譲）の構築と動作確認。
-* iam-permissions-boundary: 開発者用IAMロールに対し、特定のサービスしか利用できないように権限境界を設定。
-* iam-access-analyzer: CloudTrail履歴に基づく最小権限ポリシーの自動生成と、S3やKMSの「外部公開（パブリック・クロスアカウント）」を検知するZone of Trust Borderの検証。
-* organizations-scp: AWS Organizationsによるマルチアカウント管理を前提とし、「ルートユーザーの操作制限」や「特定リージョン以外のリソース作成禁止」を適用するガードレールの検証。
+* iam-permissions-boundary: learner-admin PermissionSet（AdministratorAccess）に権限境界を設定し、IAM権限昇格操作（CreatePolicy / AttachRolePolicy / PutRolePolicy 等）をDenyすることで「Admin権限でも権限昇格できない」ことを体感。EC2・S3・CloudWatch Logsのみ許可する境界ポリシーをSSOに直接アタッチ。
+* iam-access-analyzer: ACCOUNTスコープのAnalyzerを作成し、S3バケットポリシーで外部アクセスを設定した際にフィンディングが自動検出されることを確認。アーカイブルールによる同一アカウント内アクセスの誤検知抑制も実装。
+* cross-account-role: learnerアカウント→peerアカウントへのAssumeRoleを2段階制御（信頼ポリシー＋アイデンティティポリシー）で実装。peerのS3シークレットへのアクセス可否で権限委譲を体感。信頼ポリシーにExternalIdのコメントアウト実装でConfused Deputy問題も学習。
+* organizations-scp: ルートユーザーの全操作を禁止するSCP（aws:PrincipalArn条件）と、ap-northeast-1以外のリソース作成を禁止するリージョン制限SCP（NotAction でグローバルサービス除外）を実装。メンバーアカウントへの適用を確認。
 
 ## 02_Infrastructure_Security (インフラストラクチャのセキュリティ)
 
