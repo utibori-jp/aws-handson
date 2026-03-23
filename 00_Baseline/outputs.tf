@@ -45,10 +45,30 @@ output "cloudtrail_trail_arn" {
 }
 
 # ---
-# IAM
+# Organizations / IAM Identity Center
 # ---
 
-output "learner_user_name" {
-  description = "Name of the base learner IAM user"
-  value       = aws_iam_user.learner.name
+output "learner_account_id" {
+  description = "AWS account ID of the learner member account"
+  value       = aws_organizations_account.learner.id
+}
+
+output "peer_account_id" {
+  description = "AWS account ID of the peer member account"
+  value       = aws_organizations_account.peer.id
+}
+
+output "sso_instance_arn" {
+  description = "ARN of the IAM Identity Center instance"
+  value       = local.sso_instance_arn
+}
+
+output "learner_admin_permission_set_arn" {
+  description = "ARN of the Admin permission set for the learner account"
+  value       = aws_ssoadmin_permission_set.learner_admin.arn
+}
+
+output "learner_readonly_permission_set_arn" {
+  description = "ARN of the ReadOnly permission set for the learner account"
+  value       = aws_ssoadmin_permission_set.learner_readonly.arn
 }
