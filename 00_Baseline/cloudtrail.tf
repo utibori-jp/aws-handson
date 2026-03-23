@@ -1,10 +1,21 @@
 # =============================================================================
-# cloudtrail.tf — cloudtrail-base
-# マルチリージョン対応のCloudTrail証跡を有効化し、S3バケットへログを集約する。
-# ログファイルの整合性検証を有効にし、改ざん検知を担保する。
+# cloudtrail.tf — 00_Baseline
+# 管理アカウントにローカル証跡を作成し、API コールログを S3 バケットへ保管する。
+#
+# 【CloudTrail とは】
+# AWS アカウント内の API コールを記録するサービス。
+# 「誰が・いつ・何を操作したか」を追跡でき、セキュリティ調査・コンプライアンス対応の基盤となる。
+# SCS頻出：「CloudTrail を有効化してログを S3 に集約する」
+#
+# 【確認ポイント】
+# apply 後、以下で証跡が有効になっていることを確認する。
+#
+#   aws cloudtrail describe-trails --profile terraform-sso
+#   aws cloudtrail get-trail-status \
+#     --name <trail-name> \
+#     --profile terraform-sso
 # =============================================================================
 
-# account_id / partition は main.tf で定義。trail_name はこのファイル固有のため個別に定義する。
 locals {
   trail_name = "${var.project_name}-trail"
 }
@@ -109,7 +120,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "cloudtrail" {
 }
 
 # CloudTrailがバケットへ書き込むために必要なバケットポリシー。
-# AWSが要求する2つのStatementを設定する（公式ドキュメント準拠）。
+# AWS:SourceArn 条件で自分の証跡のみに限定し、Confused Deputy 攻撃を防ぐ。
 resource "aws_s3_bucket_policy" "cloudtrail" {
   bucket = aws_s3_bucket.cloudtrail.id
 
@@ -117,6 +128,7 @@ resource "aws_s3_bucket_policy" "cloudtrail" {
     Version = "2012-10-17"
     Statement = [
       {
+        # ACL 確認権限。
         # CloudTrailサービスがログを書き込む前に、「自分に権限があるか」「バケット所有者は誰か」を
         # バケットのACLを確認するために必要。
         Sid    = "AWSCloudTrailAclCheck"
@@ -135,20 +147,17 @@ resource "aws_s3_bucket_policy" "cloudtrail" {
         }
       },
       {
-        # CloudTrailがログファイルをPutObjectするために必要。
+        # ログ書き込み権限。
         Sid    = "AWSCloudTrailWrite"
         Effect = "Allow"
         Principal = {
           Service = "cloudtrail.amazonaws.com"
         }
-        Action = "s3:PutObject"
-        # AWSLogs/{account_id}/ 以下のみに書き込みを許可。
+        Action   = "s3:PutObject"
         Resource = "${aws_s3_bucket.cloudtrail.arn}/AWSLogs/${local.account_id}/*"
         Condition = {
           StringEquals = {
-            # bucket-owner-full-control はログの所有権をバケット所有者（監査アカウントなど）に移譲するための設定。
-            # 各アカウントのCloudtrailログは、共通のこのバケットに集約される。
-            # この設定がないと、バケット所有者が自分のバケット内に他アカウントから書き込まれたログにアクセスできなくなる。
+            # bucket-owner-full-control はログの所有権をバケット所有者に移譲するための設定。
             "s3:x-amz-acl"  = "bucket-owner-full-control"
             "AWS:SourceArn" = "arn:${local.partition}:cloudtrail:${var.region}:${local.account_id}:trail/${local.trail_name}"
           }
@@ -162,6 +171,7 @@ resource "aws_s3_bucket_policy" "cloudtrail" {
 # CloudTrail 証跡
 # ---
 
+# 管理アカウントのローカル証跡。
 resource "aws_cloudtrail" "main" {
   name           = local.trail_name
   s3_bucket_name = aws_s3_bucket.cloudtrail.id
@@ -170,10 +180,8 @@ resource "aws_cloudtrail" "main" {
   include_global_service_events = true
 
   # 全リージョンのイベントを1つの証跡で収集する。
-  # リージョンごとに証跡を作る必要がなく、管理が集約できる。
   is_multi_region_trail = true
 
-  # ログファイルの整合性検証を有効化。
   # ダイジェストファイルを使ってログが改ざんされていないかを検証できる（SCS頻出）。
   enable_log_file_validation = true
 
