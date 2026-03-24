@@ -24,7 +24,12 @@ locals {
 # S3 バケットと CloudFront Distribution の管理に使用する。
 provider "aws" {
   region  = var.region
-  profile = var.aws_profile
+  profile = var.aws_profile  # terraform-sso（管理アカウント）で認証
+
+  # リソースの着地先を learner アカウントに切り替える。
+  assume_role {
+    role_arn = "arn:aws:iam::${var.learner_account_id}:role/OrganizationAccountAccessRole"
+  }
 
   default_tags {
     tags = {
@@ -41,7 +46,12 @@ provider "aws" {
 provider "aws" {
   alias   = "us_east_1"
   region  = "us-east-1"
-  profile = var.aws_profile
+  profile = var.aws_profile  # terraform-sso（管理アカウント）で認証
+
+  # メインプロバイダと同じ learner アカウントに切り替える。
+  assume_role {
+    role_arn = "arn:aws:iam::${var.learner_account_id}:role/OrganizationAccountAccessRole"
+  }
 
   default_tags {
     tags = {
