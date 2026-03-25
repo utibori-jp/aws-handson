@@ -67,7 +67,12 @@ resource "aws_organizations_policy" "region_guardrail" {
           "route53:*",
           "route53domains:*",
           # WAF の一部（CloudFront 用）はグローバル
-          "waf:*"
+          # WAF Classic と WAFv2 は別物として扱われる
+          # このハンズオンでは WAFv2 を利用する
+          "wafv2:*",
+          "shield:*",
+          # グローバルサービスのログを見るために除外設定が必要
+          "cloudwatch:*",
         ]
         Resource = "*"
         Condition = {
