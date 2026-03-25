@@ -15,6 +15,17 @@
 # 【追加したルール】
 # - AWSManagedRulesCommonRuleSet: SQL injection, XSS, ファイルインクルージョンなど一般的な脅威
 # - AWSManagedRulesKnownBadInputsRuleSet: 悪意あるリクエストパターン（Log4Shell など）
+#
+# 【確認ポイント】
+# SQLi パターンを含むリクエストが WAF でブロック（403）されることを確認する。
+#
+#   DOMAIN=$(terraform output -raw cloudfront_domain_name)
+#   curl -si "https://${DOMAIN}/index.html?id=1'+OR+'1'%3D'1" | head -3
+#   # → HTTP/1.1 403 Forbidden
+#
+# 正常リクエストは通過することも合わせて確認する。
+#   curl -si "https://${DOMAIN}/index.html" | head -3
+#   # → HTTP/2 200
 # =============================================================================
 
 resource "aws_wafv2_web_acl" "cloudfront" {

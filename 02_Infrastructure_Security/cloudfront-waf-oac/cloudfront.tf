@@ -7,6 +7,16 @@
 # セキュリティヘッダーを CloudFront レベルで強制付与することで、
 # オリジン（S3）側の設定に依存せずにブラウザのセキュリティ機能を有効化できる。
 # SCS頻出：「HSTS・CSP・X-Frame-Options によるエッジ防御」
+#
+# 【確認ポイント】
+# CloudFront 経由でコンテンツが取得でき、セキュリティヘッダーが付与されていることを確認する。
+#
+#   DOMAIN=$(terraform output -raw cloudfront_domain_name)
+#   curl -si "https://${DOMAIN}/index.html" | grep -E "HTTP|strict-transport|x-frame|x-content"
+#   # → HTTP/2 200
+#   # → strict-transport-security: max-age=31536000
+#   # → x-frame-options: DENY
+#   # → x-content-type-options: nosniff
 # =============================================================================
 
 # ---

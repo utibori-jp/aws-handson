@@ -13,6 +13,14 @@
 # - aws:SourceArn 条件で「このディストリビューション以外」からのアクセスを拒否する
 #   → Confused Deputy 攻撃対策（別の CloudFront ディストリビューションによる悪用防止）
 # - パブリックアクセスブロックを有効にしたまま CloudFront 経由のみ公開できる点が重要
+#
+# 【確認ポイント】
+# S3 バケットへの直接アクセスが拒否されることを確認する。
+# CloudFront を経由せず S3 のリージョナルエンドポイントに直接 GET すると 403 になる。
+#
+#   BUCKET=$(terraform output -raw origin_bucket_name)
+#   curl -si "https://${BUCKET}.s3.ap-northeast-1.amazonaws.com/index.html" | head -5
+#   # → HTTP/1.1 403 Forbidden
 # =============================================================================
 
 resource "aws_s3_bucket" "origin" {
