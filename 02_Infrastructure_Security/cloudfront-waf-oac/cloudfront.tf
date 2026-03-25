@@ -49,6 +49,9 @@ resource "aws_cloudfront_origin_access_control" "main" {
 # レスポンスヘッダーポリシー（セキュリティヘッダー）
 # ---
 
+# S3 などのオリジン側で個別に設定が難しいセキュリティヘッダーを、エッジ（CloudFront）で一括付与する。
+# これにより、オリジンの実装に依存せず、ブラウザ側での脆弱性攻撃を境界レベルで防御できる。
+# インフラ側の OAC 制御と、このブラウザ側のヘッダー制御を組み合わせることで多層防御を実現している。
 resource "aws_cloudfront_response_headers_policy" "security_headers" {
   name    = "${var.project_name}-security-headers"
   comment = "Security headers for SCS study — HSTS, CSP, X-Frame-Options, etc."
@@ -106,8 +109,8 @@ resource "aws_cloudfront_distribution" "main" {
   web_acl_id = aws_wafv2_web_acl.cloudfront.arn
 
   origin {
-    domain_name              = aws_s3_bucket.origin.bucket_regional_domain_name
-    origin_id                = "s3-${aws_s3_bucket.origin.id}"
+    domain_name = aws_s3_bucket.origin.bucket_regional_domain_name
+    origin_id   = "s3-${aws_s3_bucket.origin.id}"
 
     # OAC を使うことで S3 直接アクセスを拒否し、CloudFront 経由のみ許可する。
     origin_access_control_id = aws_cloudfront_origin_access_control.main.id
