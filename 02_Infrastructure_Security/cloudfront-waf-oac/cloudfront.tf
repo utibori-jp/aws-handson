@@ -25,6 +25,13 @@
 
 # OAC を定義する（OAI の後継）。
 # CloudFront が S3 へリクエストする際に SigV4 で署名するための設定。
+#
+# 【署名の意義】
+# S3 バケットポリシーは Principal = cloudfront.amazonaws.com に限定しているが、
+# 署名がなければ「どの CloudFront からのリクエストか」を S3 が識別できない。
+# 攻撃者が別の CloudFront ディストリビューションを立てても、
+# s3.tf の aws:SourceArn 条件が「このディストリビューション以外」を拒否するため無効。
+# 署名は S3 が aws:SourceArn 条件を評価する前提となる認証手段。
 resource "aws_cloudfront_origin_access_control" "main" {
   name                              = "${var.project_name}-oac"
   description                       = "OAC for ${var.project_name} S3 origin"
