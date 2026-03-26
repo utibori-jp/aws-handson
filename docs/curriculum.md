@@ -45,6 +45,5 @@
 
 ## 06_Zero_Trust_Architecture (ゼロトラストアーキテクチャ)
 
-* ssm-session-manager-private: 踏み台サーバーを廃止し、SSM Session ManagerとVPCエンドポイントを用いた閉域網からのセキュアなアクセス、およびセッションログのS3出力を検証。
 * apigw-iam-auth: API GatewayのIAM認証（AWS Signature V4）を利用し、ネットワーク境界に依存しないマイクロサービスへのリクエスト認可を検証。
 * verified-access: AWS Verified Accessを構築し、デバイスの状態やID属性に基づくVPNレスなプライベートアプリへのアクセス制御を検証。
