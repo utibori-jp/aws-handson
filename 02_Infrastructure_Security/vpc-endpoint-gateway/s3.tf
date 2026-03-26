@@ -5,7 +5,7 @@
 # EC2 インスタンス（プライベートサブネット）から、
 # NAT Gateway を経由せずにこのバケットにアクセスできることを確認するための検証用。
 #
-# 【演習手順（apply 後）】
+# 【確認ポイント】
 # 1. プライベートサブネットの EC2 インスタンスから以下を実行する：
 #      aws s3 ls s3://<bucket_name> --region ap-northeast-1
 #    → VPC Endpoint 経由でアクセスできることを確認する
@@ -35,6 +35,9 @@ resource "aws_s3_bucket_public_access_block" "endpoint_test" {
   restrict_public_buckets = true
 }
 
+# デフォルト暗号化を有効化する。
+# SCS的観点：KMS（SSE-KMS）を使うとキーポリシーでアクセス制御できるが、
+# 演習用バケットのため AES256（SSE-S3）で十分。
 resource "aws_s3_bucket_server_side_encryption_configuration" "endpoint_test" {
   bucket = aws_s3_bucket.endpoint_test.id
 

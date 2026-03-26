@@ -1,7 +1,8 @@
 # =============================================================================
 # variables.tf
 # 本モジュール全体で使用する入力変数。
-# vpc_id と route_table_ids は 00_Baseline の terraform output から取得する。
+# learner_account_id は 00_Baseline の terraform output から取得する。
+# VPC は自包のため、vpc_id / route_table_ids は不要。
 # =============================================================================
 
 variable "aws_profile" {
@@ -22,18 +23,7 @@ variable "project_name" {
   default     = "scs-handson"
 }
 
-# 00_Baseline の terraform output vpc_id から取得する。
-# Gateway Endpoint はルートテーブルに自動でエントリを追加するため VPC ID が必要。
-variable "vpc_id" {
-  description = "VPC ID to attach the Gateway Endpoint (from 00_Baseline outputs)"
+variable "learner_account_id" {
+  description = "Learner account ID to deploy resources into (from 00_Baseline: terraform output learner_account_id)"
   type        = string
-}
-
-# 00_Baseline の terraform output public_subnet_ids / private_subnet_ids に対応するルートテーブル ID。
-# Gateway Endpoint のルートをどのルートテーブルに追加するかを指定する。
-# プライベートサブネットのルートテーブルを指定することで、
-# EC2 インスタンスが NAT Gateway を経由せずに S3 へアクセスできるようになる。
-variable "route_table_ids" {
-  description = "List of route table IDs to associate with the Gateway Endpoint"
-  type        = list(string)
 }
