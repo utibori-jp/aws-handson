@@ -12,6 +12,13 @@
 # EC2 用セキュリティグループ
 # ---
 
+# S3 Gateway Endpoint の prefix list を取得する。
+# prefix list = S3 の IP レンジをまとめた AWS マネージドリスト。
+# SG の egress でこれを指定することで、S3 以外への通信を許可しない最小権限構成になる。
+data "aws_prefix_list" "s3" {
+  name = "com.amazonaws.${var.region}.s3"
+}
+
 resource "aws_security_group" "ec2" {
   name        = "${var.project_name}-ec2-sg"
   description = "Security group for EC2 test instance"
@@ -26,6 +33,18 @@ resource "aws_security_group" "ec2" {
     to_port         = 443
     protocol        = "tcp"
     cidr_blocks     = [local.vpc_cidr]
+  }
+
+  # S3 Gateway Endpoint 経由の通信を許可する。
+  # CIDR ではなく prefix list ID で指定することで「S3 の IP レンジだけ」に絞れる。
+  # Gateway Endpoint を通るが、SG は Endpoint 自体ではなく宛先 IP で評価されるため、
+  # この egress ルールが必要になる。
+  egress {
+    description     = "HTTPS to S3 via Gateway Endpoint"
+    from_port       = 443
+    to_port         = 443
+    protocol        = "tcp"
+    prefix_list_ids = [data.aws_prefix_list.s3.id]
   }
 
   tags = {
