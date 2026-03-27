@@ -32,3 +32,8 @@ output "test_instance_id" {
   description = "Instance ID of the test EC2 (use with SSM Session Manager)"
   value       = aws_instance.test.id
 }
+
+output "peer_endpoint_test_bucket_name" {
+  description = "Name of the peer account S3 bucket for endpoint policy Deny verification"
+  value       = aws_s3_bucket.peer_endpoint_test.bucket
+}

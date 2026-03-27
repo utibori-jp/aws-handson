@@ -32,3 +32,24 @@ provider "aws" {
     }
   }
 }
+
+# エンドポイントポリシーの Deny を証明するための peer アカウント用プロバイダ。
+# peer アカウントに S3 バケットを作成し、learner EC2 ロールからの ListBucket を許可する。
+# エンドポイントポリシーがなければアクセスできるが、DenyOtherAccountS3 で遮断されることを確認できる。
+provider "aws" {
+  alias   = "peer"
+  region  = var.region
+  profile = var.aws_profile
+
+  assume_role {
+    role_arn = "arn:aws:iam::${var.peer_account_id}:role/OrganizationAccountAccessRole"
+  }
+
+  default_tags {
+    tags = {
+      Project     = var.project_name
+      ManagedBy   = "Terraform"
+      Environment = "SCS-Study"
+    }
+  }
+}

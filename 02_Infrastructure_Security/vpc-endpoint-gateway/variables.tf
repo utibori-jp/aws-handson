@@ -27,3 +27,8 @@ variable "learner_account_id" {
   description = "Learner account ID to deploy resources into (from 00_Baseline: terraform output learner_account_id)"
   type        = string
 }
+
+variable "peer_account_id" {
+  description = "Peer account ID for cross-account S3 test bucket (from 00_Baseline: terraform output peer_account_id)"
+  type        = string
+}

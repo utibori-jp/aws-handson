@@ -47,3 +47,50 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "endpoint_test" {
     }
   }
 }
+
+# ---
+# peer アカウントの S3 バケット（エンドポイントポリシー Deny の証明用）
+# ---
+# このバケットは「エンドポイントポリシーが確かに Deny しているか」を確認するためのもの。
+# バケットポリシーで learner EC2 ロールの ListBucket を明示的に許可しておくことで、
+# アクセス拒否の原因が「S3 バケットポリシー」ではなく「エンドポイントポリシー」であると特定できる。
+resource "aws_s3_bucket" "peer_endpoint_test" {
+  provider      = aws.peer
+  bucket        = "${var.project_name}-peer-endpoint-test"
+  force_destroy = true
+
+  tags = {
+    Name    = "${var.project_name}-peer-endpoint-test"
+    Purpose = "VPCEndpoint-CrossAccount-Demo"
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "peer_endpoint_test" {
+  provider = aws.peer
+  bucket   = aws_s3_bucket.peer_endpoint_test.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+# learner アカウントの EC2 ロールに ListBucket を許可するバケットポリシー。
+# これにより「エンドポイントポリシーさえなければアクセスできる」状態を作る。
+resource "aws_s3_bucket_policy" "peer_endpoint_test" {
+  provider = aws.peer
+  bucket   = aws_s3_bucket.peer_endpoint_test.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "AllowLearnerEC2Role"
+      Effect = "Allow"
+      Principal = {
+        AWS = "arn:${local.partition}:iam::${var.learner_account_id}:role/${var.project_name}-ec2-ssm-role"
+      }
+      Action   = "s3:ListBucket"
+      Resource = aws_s3_bucket.peer_endpoint_test.arn
+    }]
+  })
+}
