@@ -15,30 +15,34 @@
 #
 # 【このモジュールで防いでいる脅威】
 # 侵害されたインスタンスが、エンドポイント経由で攻撃者の S3 バケットに
-# データを送信する「データ持ち出し（exfiltration）」攻撃。
-# aws:ResourceAccount 条件で「自アカウントの S3 以外を Deny」することで防ぐ。（SCS頻出）
+# データを送信する「データ持ち出し（exfiltration）」攻撃。（SCS頻出）
+# → AllowOwnAccountS3 の condition で「自アカウント S3 以外は Allow しない（暗黙の Deny）」ことで防ぐ。
+# → DenyOtherAccountS3 は、将来ポリシーが緩んでも上書きできない明示的 Deny としてガードレール的に機能する。
 #
 # 【確認ポイント】
 # 1. VPC コンソールでルートテーブルに「pl-xxxxxxxx（S3 サービスプレフィックス）」の
 #    エントリが自動追加されていることを確認する
 # 2. エンドポイントポリシーの JSON を確認する
 # 3. SSM Session Manager で EC2 に接続し、自アカウントの S3 にアクセスできることを確認
-#      # まず EC2 に接続する（ローカルで実行）
+#      # ローカルで実行
 #      aws ssm start-session \
-#        --target $(terraform output -raw test_instance_id) \
-#        --region ap-northeast-1
-#      # EC2 上で実行:
-#      BUCKET=$(aws s3api list-buckets \
-#        --query "Buckets[?contains(Name, 'endpoint-test')].Name | [0]" \
-#        --output text --region ap-northeast-1)
-#      aws s3 ls s3://${BUCKET} --region ap-northeast-1
-#      # → バケット内容（空）が表示されれば Gateway Endpoint 経由アクセス成功
-# 4. EC2 上で他アカウントの S3 バケットへのアクセスが Deny されることを確認
-#    （同じく EC2 上で実行。他アカウントの任意のバケット名を指定する）
-#      aws s3 ls s3://<他アカウントのバケット名> --region ap-northeast-1
+#        --profile learner-admin \
+#        --target $(terraform output -raw test_instance_id)
+#      # EC2 上で実行（バケット名は上記 terraform output endpoint_test_bucket_nam の値に読み替える）:
+#      aws s3 ls s3://<endpoint_test_bucket_name>
+#      echo "Hello from EC2" > hello.txt
+#      aws s3 cp ./hello.txt s3://<endpoint_test_bucket_name>
+#      aws s3 ls s3://<endpoint_test_bucket_name>
+#      # → hello.txt が表示される。Gateway Endpoint 経由アクセス成功。
+# 4. EC2 上で peer アカウントの S3 バケットへのアクセスが Deny されることを確認
+#    peer バケットのバケットポリシーは learner EC2 ロールを許可しているため、
+#    拒否される原因はエンドポイントポリシー（暗黙の Deny）と特定できる。
+#    （検証したければ、AllowOwnAccountS3 の condition ブロックと
+#     DenyOtherAccountS3 statement の両方を一時コメントアウトして
+#     terraform apply すると peer バケットにアクセスできるようになる）
+#      # EC2 上で実行（バケット名は terraform output peer_endpoint_test_bucket_name の値に読み替える）:
+#      aws s3 ls s3://<peer_endpoint_test_bucket_name>
 #      # → "An error occurred (AccessDenied)" が返ることを確認
-#      # ※ Deny ステートメントはエンドポイントレベルで遮断するため、
-#      #    インスタンスに強い IAM 権限があっても拒否される
 # =============================================================================
 
 # ---
@@ -70,6 +74,8 @@ resource "aws_vpc_endpoint" "s3" {
 # VPC 内のリソースのアイデンティティポリシーとの AND で有効権限が決まる（権限境界と同じ考え方）。
 data "aws_iam_policy_document" "s3_endpoint" {
   # 自アカウントの S3 バケットへの操作を許可する。
+  # condition で aws:ResourceAccount を自アカウントに限定することで、
+  # 他アカウントの S3 へのリクエストを暗黙の Deny にする（data exfiltration 防止の主体）。
   statement {
     sid    = "AllowOwnAccountS3"
     effect = "Allow"
@@ -97,10 +103,10 @@ data "aws_iam_policy_document" "s3_endpoint" {
     }
   }
 
-  # 他アカウントの S3 バケットへの全操作を Deny する。
-  # これが「data exfiltration 防止」のキモ。
-  # 侵害されたインスタンスが攻撃者のバケットにデータを送ろうとしても、
-  # エンドポイントレベルで遮断される。
+  # 他アカウントの S3 バケットへの全操作を明示的に Deny するガードレール。
+  # AllowOwnAccountS3 の condition による暗黙の Deny だけでは、
+  # 将来 Allow ルールが追加・緩和された場合に上書きされるリスクがある。
+  # 明示的 Deny は他の Allow より常に優先されるため、ポリシー変更に対して堅牢。
   statement {
     sid    = "DenyOtherAccountS3"
     effect = "Deny"
