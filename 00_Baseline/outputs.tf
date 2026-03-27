@@ -5,32 +5,6 @@
 # =============================================================================
 
 # ---
-# VPC
-# ---
-
-output "vpc_id" {
-  description = "ID of the baseline VPC"
-  value       = aws_vpc.main.id
-}
-
-# 後続章でALBやEC2を配置する際に参照する。
-output "public_subnet_ids" {
-  description = "IDs of the public subnets"
-  value       = aws_subnet.public[*].id
-}
-
-# 後続章でECSタスクやRDSを配置する際に参照する。
-output "private_subnet_ids" {
-  description = "IDs of the private subnets"
-  value       = aws_subnet.private[*].id
-}
-
-output "internet_gateway_id" {
-  description = "ID of the internet gateway"
-  value       = aws_internet_gateway.main.id
-}
-
-# ---
 # CloudTrail
 # ---
 
