@@ -38,6 +38,29 @@ resource "aws_iam_role_policy_attachment" "ssm_core" {
   policy_arn = "arn:${local.partition}:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
+# S3 の動作確認用インラインポリシー。
+# EC2 の IAM ロールに S3 権限を付与することで、インスタンスプロファイル経由でアクセスできる。
+# （ssm start-session の --profile はセッション確立のみに使われ、EC2 内には引き継がれない）
+# エンドポイントポリシーとの AND で有効権限が決まる点を確認するためのポリシー。
+resource "aws_iam_role_policy" "ec2_s3" {
+  name = "${var.project_name}-ec2-s3-policy"
+  role = aws_iam_role.ec2_ssm.name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "s3:ListBucket",
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:GetBucketLocation"
+      ]
+      Resource = "*"
+    }]
+  })
+}
+
 resource "aws_iam_instance_profile" "ec2_ssm" {
   name = "${var.project_name}-ec2-ssm-profile"
   role = aws_iam_role.ec2_ssm.name
