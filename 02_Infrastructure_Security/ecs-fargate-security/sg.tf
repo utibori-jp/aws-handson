@@ -15,8 +15,8 @@
 
 resource "aws_security_group" "ecs_task" {
   name        = "${var.project_name}-ecs-task"
-  description = "Security group for ECS Fargate tasks — deny all inbound, allow HTTPS outbound only"
-  vpc_id      = var.vpc_id
+  description = "Security group for ECS Fargate tasks - deny all inbound, allow HTTPS outbound only"
+  vpc_id      = aws_vpc.main.id
 
   tags = {
     Name = "${var.project_name}-ecs-task"

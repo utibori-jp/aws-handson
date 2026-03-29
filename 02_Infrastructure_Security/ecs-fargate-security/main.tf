@@ -1,7 +1,7 @@
 # =============================================================================
 # main.tf
-# プロバイダ設定。認証にはAWS SSOプロファイルを使用し、
-# 全リソースに共通タグ（Project / ManagedBy / Environment）を強制付与する。
+# プロバイダ設定。管理アカウントの terraform-sso プロファイルから
+# learner アカウントへ assume_role し、リソースを learner アカウントにデプロイする。
 # =============================================================================
 
 data "aws_caller_identity" "current" {}
@@ -16,6 +16,10 @@ locals {
 provider "aws" {
   region  = var.region
   profile = var.aws_profile
+
+  assume_role {
+    role_arn = "arn:aws:iam::${var.learner_account_id}:role/OrganizationAccountAccessRole"
+  }
 
   default_tags {
     tags = {
