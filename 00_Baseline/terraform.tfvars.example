@@ -11,9 +11,9 @@ learner_account_email = "yourname+learner@example.com"
 # learner_account_email と同様、Gmail エイリアス（user+peer@gmail.com）が便利です。
 peer_account_email    = "yourname+peer@example.com"
 
-# IAM Identity Center のユーザー名（通常はメールアドレス形式）。
+# IAM Identity Center のユーザー名（UserName 属性）。
 # Identity Center コンソールの「ユーザー」画面で確認できます。
-sso_username          = "yourname@example.com"
+sso_username          = "your-username"
 
 # リソース名や S3 バケット名のプレフィックス。
 # 共有アカウントで実行する場合は既存リソースと衝突しないよう変更してください。

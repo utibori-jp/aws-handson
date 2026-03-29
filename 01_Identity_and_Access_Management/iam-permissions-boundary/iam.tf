@@ -54,94 +54,96 @@
 # Terraform の依存グラフにより、SSO attachment → IAM policy の順で破棄される。
 # IAM policy の削除は OrganizationAccountAccessRole（境界の影響を受けない）で実行されるため、
 # learner-admin の権限境界に DenyIAMEscalation があっても destroy が止まらない。
+data "aws_iam_policy_document" "developer_boundary" {
+  # EC2 の読み取りと限定的な操作のみ許可。
+  # セキュリティグループの変更（ec2:AuthorizeSecurityGroupIngress など）は含めないことで、
+  # 開発者がポートを意図せず開放することを防ぐ。
+  statement {
+    sid    = "AllowEC2Limited"
+    effect = "Allow"
+    actions = [
+      "ec2:Describe*",
+      "ec2:StartInstances",
+      "ec2:StopInstances",
+      "ec2:RebootInstances",
+    ]
+    resources = ["*"]
+  }
+
+  # S3 の読み書きを許可。
+  # バケットポリシーの変更（s3:PutBucketPolicy）は含めないことで、
+  # 開発者がバケットを意図せず公開することを防ぐ。
+  statement {
+    sid    = "AllowS3Limited"
+    effect = "Allow"
+    actions = [
+      "s3:GetObject",
+      "s3:PutObject",
+      "s3:DeleteObject",
+      "s3:ListBucket",
+      "s3:GetBucketLocation",
+    ]
+    resources = ["*"]
+  }
+
+  # CloudWatch ログの読み取りを許可（デバッグ用途）。
+  statement {
+    sid    = "AllowCloudWatchLogs"
+    effect = "Allow"
+    actions = [
+      "logs:Describe*",
+      "logs:Get*",
+      "logs:List*",
+      "logs:FilterLogEvents",
+    ]
+    resources = ["*"]
+  }
+
+  # 【最重要】IAM 権限昇格操作を全面 Deny する。
+  # Deny は Allow より優先されるため、アイデンティティポリシーで IAM を許可しても無効になる。
+  #
+  # 【なぜ Deny が必要か】
+  # 権限境界は IAM の"上限設定"であり、IAM 操作そのものは止めない。
+  # 開発者が境界ポリシー自体を差し替え・削除できる状態では境界が自己破壊するため、
+  # "境界を変更・削除する権限" を Deny することで初めて境界が堅牢になる。
+  #
+  # 防いでいる攻撃パターン：
+  #   1. 新しいポリシーを作成してロール/ユーザー/グループにアタッチする
+  #      → CreatePolicy + AttachRolePolicy / AttachUserPolicy / AttachGroupPolicy
+  #   2. 既存ポリシーに新バージョンを追加して権限を昇格する
+  #      → CreatePolicyVersion（新バージョン作成）+ SetDefaultPolicyVersion（デフォルト切り替え）
+  #      ※ SetDefaultPolicyVersion 単体でも、過去に作成済みの広い権限バージョンに戻せる
+  #   3. インラインポリシーを直接書き込んで権限を昇格する
+  #      → PutRolePolicy / PutUserPolicy / PutGroupPolicy
+  #      ※ CreatePolicy を経由しないため、1 の防御をすり抜ける別経路
+  #   4. 権限境界そのものを削除して制約を外す
+  #      → DeleteRolePermissionsBoundary / DeleteUserPermissionsBoundary
+  statement {
+    sid    = "DenyIAMEscalation"
+    effect = "Deny"
+    actions = [
+      "iam:CreatePolicy",
+      "iam:CreatePolicyVersion",
+      "iam:SetDefaultPolicyVersion",
+      "iam:AttachRolePolicy",
+      "iam:AttachUserPolicy",
+      "iam:AttachGroupPolicy",
+      "iam:PutRolePolicy",
+      "iam:PutUserPolicy",
+      "iam:PutGroupPolicy",
+      "iam:DeleteRolePermissionsBoundary",
+      "iam:DeleteUserPermissionsBoundary",
+    ]
+    resources = ["*"]
+  }
+}
+
 resource "aws_iam_policy" "developer_boundary" {
   provider    = aws.learner
   name        = "${var.project_name}-developer-boundary"
   description = "Permissions boundary for developer roles — caps effective permissions to prevent privilege escalation"
 
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        # EC2 の読み取りと限定的な操作のみ許可。
-        # セキュリティグループの変更（ec2:AuthorizeSecurityGroupIngress など）は含めないことで、
-        # 開発者がポートを意図せず開放することを防ぐ。
-        Sid    = "AllowEC2Limited"
-        Effect = "Allow"
-        Action = [
-          "ec2:Describe*",
-          "ec2:StartInstances",
-          "ec2:StopInstances",
-          "ec2:RebootInstances"
-        ]
-        Resource = "*"
-      },
-      {
-        # S3 の読み書きを許可。
-        # バケットポリシーの変更（s3:PutBucketPolicy）は含めないことで、
-        # 開発者がバケットを意図せず公開することを防ぐ。
-        Sid    = "AllowS3Limited"
-        Effect = "Allow"
-        Action = [
-          "s3:GetObject",
-          "s3:PutObject",
-          "s3:DeleteObject",
-          "s3:ListBucket",
-          "s3:GetBucketLocation"
-        ]
-        Resource = "*"
-      },
-      {
-        # CloudWatch ログの読み取りを許可（デバッグ用途）。
-        Sid    = "AllowCloudWatchLogs"
-        Effect = "Allow"
-        Action = [
-          "logs:Describe*",
-          "logs:Get*",
-          "logs:List*",
-          "logs:FilterLogEvents"
-        ]
-        Resource = "*"
-      },
-      {
-        # 【最重要】IAM 権限昇格操作を全面 Deny する。
-        # Deny は Allow より優先されるため、アイデンティティポリシーで IAM を許可しても無効になる。
-        #
-        # 【なぜ Deny が必要か】
-        # 権限境界は IAM の"上限設定"であり、IAM 操作そのものは止めない。
-        # 開発者が境界ポリシー自体を差し替え・削除できる状態では境界が自己破壊するため、
-        # "境界を変更・削除する権限" を Deny することで初めて境界が堅牢になる。
-        #
-        # 防いでいる攻撃パターン：
-        #   1. 新しいポリシーを作成してロール/ユーザー/グループにアタッチする
-        #      → CreatePolicy + AttachRolePolicy / AttachUserPolicy / AttachGroupPolicy
-        #   2. 既存ポリシーに新バージョンを追加して権限を昇格する
-        #      → CreatePolicyVersion（新バージョン作成）+ SetDefaultPolicyVersion（デフォルト切り替え）
-        #      ※ SetDefaultPolicyVersion 単体でも、過去に作成済みの広い権限バージョンに戻せる
-        #   3. インラインポリシーを直接書き込んで権限を昇格する
-        #      → PutRolePolicy / PutUserPolicy / PutGroupPolicy
-        #      ※ CreatePolicy を経由しないため、1 の防御をすり抜ける別経路
-        #   4. 権限境界そのものを削除して制約を外す
-        #      → DeleteRolePermissionsBoundary / DeleteUserPermissionsBoundary
-        Sid    = "DenyIAMEscalation"
-        Effect = "Deny"
-        Action = [
-          "iam:CreatePolicy",
-          "iam:CreatePolicyVersion",
-          "iam:SetDefaultPolicyVersion",
-          "iam:AttachRolePolicy",
-          "iam:AttachUserPolicy",
-          "iam:AttachGroupPolicy",
-          "iam:PutRolePolicy",
-          "iam:PutUserPolicy",
-          "iam:PutGroupPolicy",
-          "iam:DeleteRolePermissionsBoundary",
-          "iam:DeleteUserPermissionsBoundary"
-        ]
-        Resource = "*"
-      }
-    ]
-  })
+  policy = data.aws_iam_policy_document.developer_boundary.json
 
   tags = {
     Name = "${var.project_name}-developer-boundary"

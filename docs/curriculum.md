@@ -17,9 +17,9 @@
 
 ## 02_Infrastructure_Security (インフラストラクチャのセキュリティ)
 
-* vpc-endpoint-gateway: S3ゲートウェイエンドポイントを作成し、エンドポイントポリシーによるVPC外へのアクセス制御を検証。
-* cloudfront-waf-oac: S3オリジンへの直接アクセスをOACで禁止。CloudFrontに応答ヘッダーポリシーとAWS WAFをアタッチしたエッジ防御を検証。
-* ecs-fargate-security: ECS Fargateにおけるタスクロールの最小権限適用や、Read-Only Root Filesystemの有効化など、コンテナ特有のセキュリティ設定の検証。
+* vpc-endpoint-gateway: 自包VPC内にEC2を配置し、S3ゲートウェイエンドポイントのエンドポイントポリシーで自アカウントS3のみ許可・他アカウントS3を明示Denyすることでデータ持ち出し防止を実装。SSM Session Manager経由でEC2に接続し、peerアカウントのS3バケットへのアクセス拒否を直接確認。
+* cloudfront-waf-oac: S3オリジンへの直接アクセスをOAC（SigV4署名 + aws:SourceArn条件）で禁止。CloudFrontにHSTS・X-Frame-Options等のセキュリティヘッダーポリシーと、AWSマネージドルール（CommonRuleSet・KnownBadInputs）を持つWAF Web ACLをアタッチしたエッジ多層防御を実装。
+* ecs-fargate-security: 自包VPC内のFargateタスクにreadonlyRootFilesystem・noNewPrivileges・tmpfsマウントを設定し、コンテナへのマルウェア永続化と権限昇格を防止。実行ロール（ECRプル・CloudWatchログ）とタスクロール（アプリ権限）を分離し最小権限を実装。ECS Exec（SSM Session Manager統合）でコンテナ内から権限制限を直接検証。
 
 ## 03_Data_Protection (データ保護)
 
@@ -45,6 +45,5 @@
 
 ## 06_Zero_Trust_Architecture (ゼロトラストアーキテクチャ)
 
-* ssm-session-manager-private: 踏み台サーバーを廃止し、SSM Session ManagerとVPCエンドポイントを用いた閉域網からのセキュアなアクセス、およびセッションログのS3出力を検証。
 * apigw-iam-auth: API GatewayのIAM認証（AWS Signature V4）を利用し、ネットワーク境界に依存しないマイクロサービスへのリクエスト認可を検証。
 * verified-access: AWS Verified Accessを構築し、デバイスの状態やID属性に基づくVPNレスなプライベートアプリへのアクセス制御を検証。
