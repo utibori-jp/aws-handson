@@ -21,7 +21,8 @@ locals {
 }
 
 # PermissionSet を割り当てる Identity Center ユーザーをユーザー名で引く。
-# var.sso_username には Identity Center コンソールで確認できるユーザー名（通常はメールアドレス）を指定する。
+# var.sso_username には Identity Center コンソール「ユーザー」画面に表示される UserName を指定する。
+# UserName は Identity Center 固有の属性で、メールアドレスとは限らない。
 data "aws_identitystore_user" "main" {
   identity_store_id = local.identity_store_id
 
