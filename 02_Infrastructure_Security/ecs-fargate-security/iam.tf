@@ -87,11 +87,26 @@ resource "aws_iam_policy" "ecs_task_minimal" {
     Version = "2012-10-17"
     Statement = [
       {
-        # アプリが S3 バケットからコンテンツを読み取る想定の最小権限。
-        # 本番では Resource に特定バケット ARN を指定すること（ワイルドカード禁止）。
-        Sid      = "AllowS3ReadForApp"
+        # アプリが S3 バケット一覧を取得する想定の最小権限。
+        # ListAllMyBuckets はバケット一覧のみ返す。オブジェクトの読み書きは含まない。
+        # コンテナ内で `aws s3 ls` を実行して動作確認できる（確認ポイント参照）。
+        Sid      = "AllowS3ListForApp"
         Effect   = "Allow"
-        Action   = ["s3:GetObject"]
+        Action   = ["s3:ListAllMyBuckets"]
+        Resource = "*"
+      },
+      {
+        # ECS Exec（SSM Session Manager 経由のコンテナシェルアクセス）に必要な権限。
+        # コンテナへの exec アクセスはタスクロールで制御される（実行ロールではない）。
+        # SCS的観点: 本番では IAM 条件キーで特定タスク・ユーザーに絞ること。
+        Sid    = "AllowECSExec"
+        Effect = "Allow"
+        Action = [
+          "ssmmessages:CreateControlChannel",
+          "ssmmessages:CreateDataChannel",
+          "ssmmessages:OpenControlChannel",
+          "ssmmessages:OpenDataChannel"
+        ]
         Resource = "*"
       }
     ]
