@@ -10,15 +10,7 @@
 # - 開発者が自分の権限を昇格させる「権限昇格攻撃」を防ぐ仕組み
 # - SCS頻出：「最小権限原則をエンフォースする管理的コントロール」
 #
-# 【前提条件】
-# 00_Baseline が apply 済みであること。
-# sso_instance_arn / learner_admin_permission_set_arn を terraform.tfvars に設定する。
-#
-#   cd ../../00_Baseline
-#   terraform output sso_instance_arn
-#   terraform output learner_admin_permission_set_arn
-#
-# 【確認ポイント（terraform apply 後）】
+# 【確認ポイント】
 # 00_Baseline で設定した learner-admin プロファイルをそのまま使う。
 # 他の実験でも learner-admin プロファイルを利用するため、本実験後は destroy すること。
 #

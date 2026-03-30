@@ -10,15 +10,7 @@
 #         既に admin 権限を持つため、アイデンティティポリシーの追加作成は不要。
 # SCS頻出：「どちらか一方だけでは AssumeRole できない」
 #
-# 【前提条件】
-# 00_Baseline が apply 済みであること。
-# learner_account_id / peer_account_id を terraform.tfvars に設定する。
-#
-#   cd ../../00_Baseline
-#   terraform output learner_account_id
-#   terraform output peer_account_id
-#
-# 【確認ポイント（terraform apply 後）】
+# 【確認ポイント】
 # terraform output で cross_account_role_arn と secret_s3_uri を控えておく。
 #
 # ① AssumeRole なし →  peer アカウントの権限を持たなめ失敗することを確認
