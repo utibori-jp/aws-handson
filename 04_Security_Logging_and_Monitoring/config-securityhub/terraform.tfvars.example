@@ -1,0 +1,17 @@
+# terraform.tfvars.example
+# このファイルをコピーして terraform.tfvars を作成する。
+# terraform.tfvars には実際の値が入るため git にコミットしないこと。
+#
+#   cp terraform.tfvars.example terraform.tfvars
+#
+# project_name は S3 バケット名のプレフィックスになる。
+# S3 バケット名はグローバルユニークなため、自分固有の名前に変更すること。
+# （例: "yamada-scs-handson"）
+
+project_name = "scs-handson"
+region       = "ap-northeast-1"
+aws_profile  = "terraform-sso"
+
+# Finding Aggregator を有効化するかどうか（デフォルト: false）。
+# マルチリージョン集約を体験したい場合のみ true にする。
+# enable_finding_aggregator = true
