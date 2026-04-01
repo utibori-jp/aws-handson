@@ -4,17 +4,16 @@
 #
 #   cp terraform.tfvars.example terraform.tfvars
 
-# Learner メンバーアカウントの AWS アカウント ID（S3 バケットの配置先）。
+# Learner メンバーアカウントの AWS アカウント ID。
 # 00_Baseline を apply した後、以下で確認できます。
 #   terraform -chdir=../../00_Baseline output learner_account_id
 learner_account_id = "123456789012"
 
-# Peer メンバーアカウントの AWS アカウント ID（KMS CMK の配置先・鍵管理アカウント）。
-# 00_Baseline を apply した後、以下で確認できます。
-#   terraform -chdir=../../00_Baseline output peer_account_id
-peer_account_id = "234567890123"
+# ドメインや Route 53 ホストゾーンは不要です。
+# tls プロバイダで自己署名証明書を生成して ACM にインポートするため、
+# ドメイン所有の証明（DNS/メール検証）は必要ありません。
 
-# リソース名や S3 バケット名のプレフィックス。
+# リソース名のプレフィックス。
 # 共有アカウントで実行する場合は既存リソースと衝突しないよう変更してください。
 # デフォルト値（scs-handson）のままでよければ省略可。
 # project_name = "scs-handson"
