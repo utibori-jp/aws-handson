@@ -15,6 +15,12 @@
 # 【カスタムフォーマット】
 # デフォルトフォーマットに加え、vpc-id / subnet-id / az-id など拡張フィールドを追加。
 # Athena でクエリする際に VPC・サブネット単位の絞り込みが可能になる。
+#
+# 【Security Lake との関係】
+# VPC Flow Logs は Amazon Security Lake の自動ソースとしても取り込める。
+# security-lake モジュールを apply すると、このモジュールとは別に Security Lake が
+# VPC Flow Logs を OCSF 形式で正規化・集約する。両者は独立して共存できる。
+# （このモジュール: カスタム Parquet で詳細分析、Security Lake: OCSF で横断分析）
 # =============================================================================
 
 # ---
