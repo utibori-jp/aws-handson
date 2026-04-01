@@ -23,8 +23,8 @@
 
 ## 03_Data_Protection (データ保護)
 
-* s3-object-lock-governance: S3オブジェクトロックのガバナンスモード有効化と、特権による削除回避の検証（検証後のdestroyを前提）。
-* kms-cmk-encryption: KMSのCMKを用いたS3暗号化と、キーポリシーによる厳格なアクセス制御。キー削除スケジュールの自動化を含む。
+* kms-cmk-encryption: PeerアカウントをCMK管理者・LearnerアカウントをCMK利用者に分離し、「キーを管理できる人は復号できない」というキーポリシーによる職務分離を実装。キー削除スケジュール（deletion_window_in_days）による誤削除防止も確認。
+* acm-tls-encryption: tfsプロバイダで自己署名証明書を生成してACMにインポートし、ALBでHTTP→HTTPSリダイレクトとTLSポリシー選択を実装。validity_period_hours=1で証明書を意図的に失効させ、インポート証明書がACMの有効期限監視・自動更新の対象外であることを体感。
 
 ## 04_Security_Logging_and_Monitoring (セキュリティログとモニタリング)
 
