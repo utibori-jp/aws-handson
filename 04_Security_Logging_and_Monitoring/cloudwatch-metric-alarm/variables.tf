@@ -23,6 +23,11 @@ variable "project_name" {
   default     = "scs-handson"
 }
 
+variable "learner_account_id" {
+  description = "AWS account ID of the learner member account (from 00_Baseline: terraform output learner_account_id)"
+  type        = string
+}
+
 # SNS 通知の送信先メールアドレス。
 # 空文字列の場合は SNS サブスクリプションを作成しない。
 variable "alert_email" {
