@@ -12,6 +12,44 @@ resource "aws_sns_topic" "cis_alarms" {
   }
 }
 
+data "aws_iam_policy_document" "cis_alarms_policy" {
+  statement {
+    sid    = "AllowCloudWatchPublic"
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["cloudwatch.amazonaws.com"]
+    }
+
+    actions   = ["sns:Publish"]
+    resources = [aws_sns_topic.cis_alarms.arn]
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [local.account_id]
+    }
+  }
+
+  statement {
+    sid    = "AllowEventBridgePublish"
+    effect = "Allow"
+
+    principals {
+      type        = "service"
+      identifiers = ["events.amazonaws.com"]
+    }
+
+    actions   = ["sns.Publish"]
+    resources = [aws_sns_topic.cis_alarms.arn]
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [local.account_id]
+    }
+  }
+
+}
+
 # SNS トピックポリシー。
 # CloudWatch Alarms（cloudwatch.amazonaws.com）と EventBridge（events.amazonaws.com）の
 # 両サービスが Publish できるように許可する。
@@ -20,41 +58,7 @@ resource "aws_sns_topic" "cis_alarms" {
 resource "aws_sns_topic_policy" "cis_alarms" {
   arn = aws_sns_topic.cis_alarms.arn
 
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "AllowCloudWatchPublish"
-        Effect = "Allow"
-        Principal = {
-          Service = "cloudwatch.amazonaws.com"
-        }
-        Action   = "sns:Publish"
-        Resource = aws_sns_topic.cis_alarms.arn
-        Condition = {
-          StringEquals = {
-            # 自アカウントの CloudWatch からの Publish のみを許可する（Confused Deputy 対策）。
-            "aws:SourceAccount" = local.account_id
-          }
-        }
-      },
-      {
-        Sid    = "AllowEventBridgePublish"
-        Effect = "Allow"
-        Principal = {
-          Service = "events.amazonaws.com"
-        }
-        Action   = "sns:Publish"
-        Resource = aws_sns_topic.cis_alarms.arn
-        Condition = {
-          StringEquals = {
-            # 自アカウントの EventBridge からの Publish のみを許可する（Confused Deputy 対策）。
-            "aws:SourceAccount" = local.account_id
-          }
-        }
-      }
-    ]
-  })
+  policy = data.aws_iam_policy_document.cis_alarms_policy.json
 }
 
 # メール通知サブスクリプション（var.alert_email が空の場合は作成しない）。
