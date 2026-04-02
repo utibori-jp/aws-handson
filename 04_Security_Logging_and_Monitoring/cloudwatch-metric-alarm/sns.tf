@@ -12,6 +12,12 @@ resource "aws_sns_topic" "cis_alarms" {
   }
 }
 
+# SNS トピックポリシーの定義。
+# CloudWatch Alarms（cloudwatch.amazonaws.com）と EventBridge（events.amazonaws.com）の
+# 両サービスが Publish できるように許可する。
+# このモジュールは「メトリクスフィルター方式」と「EventBridge 直接検知方式」の2方式を
+# 同一 SNS トピックに集約する設計のため、両プリンシパルを許可する。
+# aws:SourceAccount 条件で Confused Deputy 攻撃を防止する。
 data "aws_iam_policy_document" "cis_alarms_policy" {
   statement {
     sid    = "AllowCloudWatchPublic"
@@ -35,11 +41,11 @@ data "aws_iam_policy_document" "cis_alarms_policy" {
     effect = "Allow"
 
     principals {
-      type        = "service"
+      type        = "Service"
       identifiers = ["events.amazonaws.com"]
     }
 
-    actions   = ["sns.Publish"]
+    actions   = ["sns:Publish"]
     resources = [aws_sns_topic.cis_alarms.arn]
     condition {
       test     = "StringEquals"
@@ -50,11 +56,7 @@ data "aws_iam_policy_document" "cis_alarms_policy" {
 
 }
 
-# SNS トピックポリシー。
-# CloudWatch Alarms（cloudwatch.amazonaws.com）と EventBridge（events.amazonaws.com）の
-# 両サービスが Publish できるように許可する。
-# このモジュールは「メトリクスフィルター方式」と「EventBridge 直接検知方式」の2方式を
-# 同一 SNS トピックに集約する設計のため、両プリンシパルを許可する。
+# 上記ポリシードキュメントを SNS トピックにアタッチする。
 resource "aws_sns_topic_policy" "cis_alarms" {
   arn = aws_sns_topic.cis_alarms.arn
 

@@ -112,7 +112,7 @@ resource "aws_s3_bucket_public_access_block" "cloudtrail" {
   restrict_public_buckets = true
 }
 
-# CloudTrail が S3 バケットへ書き込むために必要なバケットポリシー。
+# CloudTrail が S3 バケットへ書き込むために必要なバケットポリシーの定義。
 # CloudTrail はユーザーの IAM ロールではなく、AWS サービス自身（サービスプリンシパル: cloudtrail.amazonaws.com）でアクセスする。
 # そのため、バケットポリシーで cloudtrail.amazonaws.com を Principal として明示的に許可する必要がある。
 #
@@ -124,50 +124,57 @@ resource "aws_s3_bucket_public_access_block" "cloudtrail" {
 # Principal を cloudtrail.amazonaws.com とするだけでは「どの CloudTrail でも書き込める」状態になる。
 # AWS:SourceArn で特定のアカウント・特定の証跡の ARN を指定することで、
 # このバケットへのアクセスを「このアカウントのこの証跡だけ」に制限できる（Confused Deputy 攻撃の防止）。
+data "aws_iam_policy_document" "cloudtrail_s3" {
+  statement {
+    # CloudTrail の仕様: PutObject の前に GetBucketAcl で書き込み権限を事前確認する。
+    # このステートメントがないと Trail 作成時に "insufficient permissions" エラーになる。
+    sid    = "AWSCloudTrailAclCheck"
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["cloudtrail.amazonaws.com"]
+    }
+    actions   = ["s3:GetBucketAcl"]
+    resources = [aws_s3_bucket.cloudtrail.arn]
+    condition {
+      test     = "StringEquals"
+      variable = "AWS:SourceArn"
+      # cloudtrail.amazonaws.com というサービスプリンシパル全体ではなく、
+      # このアカウント・この証跡からのリクエストのみを許可する。
+      values = ["arn:${local.partition}:cloudtrail:${var.region}:${local.account_id}:trail/${local.trail_name}"]
+    }
+  }
+
+  statement {
+    sid    = "AWSCloudTrailWrite"
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["cloudtrail.amazonaws.com"]
+    }
+    actions = ["s3:PutObject"]
+    # AWSLogs/{account_id}/ 配下のみを対象にする（パス外への書き込みを防ぐ）。
+    resources = ["${aws_s3_bucket.cloudtrail.arn}/AWSLogs/${local.account_id}/*"]
+    condition {
+      test     = "StringEquals"
+      variable = "s3:x-amz-acl"
+      # bucket-owner-full-control を要求することで、バケット所有者が常にログを読める状態を保証する。
+      values = ["bucket-owner-full-control"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "AWS:SourceArn"
+      values   = ["arn:${local.partition}:cloudtrail:${var.region}:${local.account_id}:trail/${local.trail_name}"]
+    }
+  }
+}
+
+# 上記ポリシードキュメントを S3 バケットにアタッチする。
 resource "aws_s3_bucket_policy" "cloudtrail" {
   bucket     = aws_s3_bucket.cloudtrail.id
   depends_on = [aws_s3_bucket_public_access_block.cloudtrail]
 
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        # CloudTrail の仕様: PutObject の前に GetBucketAcl で書き込み権限を事前確認する。
-        # このステートメントがないと Trail 作成時に "insufficient permissions" エラーになる。
-        Sid    = "AWSCloudTrailAclCheck"
-        Effect = "Allow"
-        Principal = {
-          Service = "cloudtrail.amazonaws.com"
-        }
-        Action   = "s3:GetBucketAcl"
-        Resource = aws_s3_bucket.cloudtrail.arn
-        Condition = {
-          StringEquals = {
-            # cloudtrail.amazonaws.com というサービスプリンシパル全体ではなく、
-            # このアカウント・この証跡からのリクエストのみを許可する。
-            "AWS:SourceArn" = "arn:${local.partition}:cloudtrail:${var.region}:${local.account_id}:trail/${local.trail_name}"
-          }
-        }
-      },
-      {
-        Sid    = "AWSCloudTrailWrite"
-        Effect = "Allow"
-        Principal = {
-          Service = "cloudtrail.amazonaws.com"
-        }
-        Action   = "s3:PutObject"
-        # AWSLogs/{account_id}/ 配下のみを対象にする（パス外への書き込みを防ぐ）。
-        Resource = "${aws_s3_bucket.cloudtrail.arn}/AWSLogs/${local.account_id}/*"
-        Condition = {
-          StringEquals = {
-            # bucket-owner-full-control を要求することで、バケット所有者が常にログを読める状態を保証する。
-            "s3:x-amz-acl"  = "bucket-owner-full-control"
-            "AWS:SourceArn" = "arn:${local.partition}:cloudtrail:${var.region}:${local.account_id}:trail/${local.trail_name}"
-          }
-        }
-      }
-    ]
-  })
+  policy = data.aws_iam_policy_document.cloudtrail_s3.json
 }
 
 # ---
