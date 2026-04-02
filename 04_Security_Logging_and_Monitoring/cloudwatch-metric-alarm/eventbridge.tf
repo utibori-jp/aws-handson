@@ -27,6 +27,54 @@
 # 3. CloudTrail 停止/削除  ← 監査ログを止めることは証跡隠滅の典型手口
 # 4. ルートユーザー操作     ← ルートの直接操作は SCS 試験頻出の異常シグナル
 # 5. IAM ユーザー作成      ← 不正なバックドアアカウント作成の検知
+#
+# 【確認ポイント】
+# 全ルールが ENABLED 状態になっていることを確認する。
+#
+# aws events list-rules \
+#   --name-prefix "scs-handson-" \
+#   --profile learner-admin \
+#   --region ap-northeast-1 \
+#   --query 'Rules[*].{Name: Name, State: State}' \
+#   --output table
+#
+# KMS 削除予約ルールの発火テスト（CMK を作成して削除予約し、SNS 通知がリアルタイムで届くことを確認する）。
+# メトリクスフィルター方式（約 5 分）との遅延差を体感できる。
+#
+# KEY_ID=$(aws kms create-key \
+#   --description "cis-eventbridge-test" \
+#   --profile learner-admin \
+#   --region ap-northeast-1 \
+#   --query 'KeyMetadata.KeyId' --output text)
+# aws kms schedule-key-deletion \
+#   --key-id "$KEY_ID" \
+#   --pending-window-in-days 7 \
+#   --profile learner-admin \
+#   --region ap-northeast-1
+# → SNS に秒単位で通知が届く。
+# ※ テスト後にキャンセルすること（削除予約のまま放置しないこと）:
+# aws kms cancel-key-deletion --key-id "$KEY_ID" --profile learner-admin --region ap-northeast-1
+# =============================================================================
+
+# =============================================================================
+# 【EventBridge の detail-type について】
+# EventBridge のデフォルトバスには、CloudTrail 以外にも様々な種類のイベントが流れる。
+# これらは "detail-type" フィールドによって分類され、ルールでフィルタリングできる。
+#
+# 1. スケジュールイベント : "Scheduled Event"
+#    EventBridge Scheduler や cron 式による定期実行トリガー。
+#
+# 2. サービスイベント     : "EC2 Instance State-change Notification" など
+#    S3 オブジェクト作成や EC2 の状態変化など、リソース自身が自律的に発するイベント。
+#
+# 3. カスタムイベント     : （任意の文字列）
+#    アプリケーションが PutEvents API で投入する独自定義のイベント。
+#
+# 4. CloudTrail 経由イベント: "AWS API Call via CloudTrail" / "AWS Console Sign In via CloudTrail"
+#    ユーザーやサービスによる API コール、コンソール操作の記録。
+#
+# 本モジュールではセキュリティ監査を目的とするため、4. の CloudTrail 経由イベントを
+# 主な監視対象としている。
 # =============================================================================
 
 # ---------------------------------------------------------------------------
@@ -67,6 +115,10 @@ resource "aws_cloudwatch_event_target" "kms_key_deletion_to_sns" {
 # SG への全 IP 許可（0.0.0.0/0）ルール追加を検知する。
 # EventBridge の content filtering（detail フィールドの深い条件）で
 # cidrIp を指定してノイズを絞り込む。
+# ALB リスナーや公開 API など、0.0.0.0/0 が正当なケースも存在するため、
+# このルールは「自動的に問題と判断する」ものではなく「必ず人の目で確認すべき変更を通知する」ものと位置づける。
+# 本番環境では、ALB 用 SG の除外やポート番号による絞り込み（例: 443/80 以外はアラート）など
+# 運用実態に合わせたチューニングが必要。
 resource "aws_cloudwatch_event_rule" "sg_ingress_all_open" {
   name        = "${var.project_name}-sg-ingress-all-open"
   description = "Detect Security Group ingress rule allowing 0.0.0.0/0"
@@ -189,6 +241,11 @@ resource "aws_cloudwatch_event_target" "root_user_activity_to_sns" {
 # ---------------------------------------------------------------------------
 # 不正なバックドアアカウント作成やアクセスキー発行を検知する。
 # 侵害後に永続的なアクセス手段を確保するために使われるパターン（SCS 頻出）。
+# ただし、すべての IAM ユーザー作成を通知すると運用上のアラート疲れ（alert fatigue）が起きやすい。
+# 本番環境での改善策:
+#   - 操作者で絞り込む: userIdentity（呼び出し元）が既知の CI/CD ロール以外の場合のみ通知
+#   - 自動対応を加える: Lambda で DenyAll ポリシーを即時アタッチし、管理者承認まで操作を封じる
+# 現状はハンズオン用途のため通知のみ。
 resource "aws_cloudwatch_event_rule" "iam_user_key_creation" {
   name        = "${var.project_name}-iam-user-key-creation"
   description = "Detect IAM user creation and access key issuance"
@@ -198,9 +255,9 @@ resource "aws_cloudwatch_event_rule" "iam_user_key_creation" {
     detail-type = ["AWS API Call via CloudTrail"]
     detail = {
       eventName = [
-        "CreateUser",         # 新規 IAM ユーザー作成
-        "CreateAccessKey",    # アクセスキー発行（既存ユーザー含む）
-        "CreateLoginProfile"  # コンソールログイン用パスワードの設定
+        "CreateUser",        # 新規 IAM ユーザー作成
+        "CreateAccessKey",   # アクセスキー発行（既存ユーザー含む）
+        "CreateLoginProfile" # コンソールログイン用パスワードの設定
       ]
       errorCode = [{ exists = false }]
     }

@@ -12,7 +12,38 @@
 # evaluation_periods = 1, period = 300（5 分）は
 # 「5 分間に 1 件以上発生したらアラーム」という設定。
 # 本番環境でノイズが多い場合は evaluation_periods を増やして感度を下げる。
+#
+# 【確認ポイント】
+# 全アラームが OK 状態（データなし = notBreaching）になっていることを確認する。
+#
+# aws cloudwatch describe-alarms \
+#   --alarm-name-prefix "scs-handson-" \
+#   --profile learner-admin \
+#   --region ap-northeast-1 \
+#   --query 'MetricAlarms[*].{Name: AlarmName, State: StateValue}' \
+#   --output table
+#
+# CIS 3.10（SG 変更）アラームの発火テスト。
+# セキュリティグループを作成・即削除することでイベントを発生させる（リソースは残らない）。
+#
+# SG_ID=$(aws ec2 create-security-group \
+#   --group-name "cis-alarm-test-$(date +%s)" \
+#   --description "CIS alarm test" \
+#   --profile learner-admin \
+#   --region ap-northeast-1 \
+#   --query 'GroupId' --output text)
+# aws ec2 delete-security-group \
+#   --group-id "$SG_ID" \
+#   --profile learner-admin \
+#   --region ap-northeast-1
+# → 約 5 分後に scs-handson-sg-changes が ALARM に遷移し、SNS 通知が届く。
 # =============================================================================
+
+# メトリクスフィルター方式（このファイル）と EventBridge 方式（eventbridge.tf）は
+# 検知対象が完全には一致しない。これは設計上意図的なもので、両方式がそれぞれ独立して
+# 同一の SNS トピックへ直接 Publish する構成になっている。
+# ルートユーザー検知のように両方式でカバーしているものは多重検知になるが、
+# 「5 分遅延でも確実な CIS 準拠」と「秒単位のリアルタイム検知」を同時に実現するための意図的な冗長性。
 
 # ---
 # CIS 3.1: ルートアカウント使用アラーム

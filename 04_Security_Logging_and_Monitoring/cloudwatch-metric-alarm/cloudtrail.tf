@@ -8,6 +8,19 @@
 # CloudWatch Logs へ配信することで、メトリクスフィルターでログを集計し、
 # 特定イベント（ルートログイン・セキュリティグループ変更など）を検知できる。
 # このパイプラインが CIS AWS Foundations Benchmark のコアコントロール（SCS 頻出）。
+#
+# 【確認ポイント】
+# apply 後 5〜10 分で、CloudWatch Logs グループにログストリームが作成されることを確認する。
+# ストリームが存在すれば CloudTrail → CloudWatch Logs の配信パイプラインが正常に機能している。
+#
+# aws logs describe-log-streams \
+#   --log-group-name "/aws/cloudtrail/scs-handson-cis" \
+#   --order-by LastEventTime \
+#   --descending \
+#   --limit 3 \
+#   --profile learner-admin \
+#   --region ap-northeast-1 \
+#   --query 'logStreams[*].{stream: logStreamName, lastEvent: lastEventTimestamp}'
 # =============================================================================
 
 # ---
@@ -17,8 +30,9 @@
 # CloudTrail ログの配信先ロググループ。
 # retention_in_days で保持期間を設定する（無制限にすると CloudWatch Logs のコストが増える）。
 resource "aws_cloudwatch_log_group" "cloudtrail" {
-  name              = local.log_group_name
-  retention_in_days = 90
+  name = local.log_group_name
+  # 検証用のためかなり短く設定
+  retention_in_days = 7
 
   tags = {
     Name = local.log_group_name
@@ -53,6 +67,8 @@ resource "aws_iam_role" "cloudtrail_cloudwatch" {
 
 # CloudTrail が CloudWatch Logs グループに書き込むためのインラインポリシー。
 # CreateLogStream と PutLogEvents の2つの権限が必要（AWS 公式ドキュメント準拠）。
+# aws_iam_role_policyはインラインでロールに権限を埋め込めるため、そのロールでしか使わない独自権限ならコードも簡潔に記述できる。
+# aws_iam_policyと、aws_iam_role_policy_attachmentを使うと、Policyを他のところでも使いまわせる。
 resource "aws_iam_role_policy" "cloudtrail_cloudwatch" {
   name = "${var.project_name}-cloudtrail-cw-policy"
   role = aws_iam_role.cloudtrail_cloudwatch.id
@@ -97,6 +113,17 @@ resource "aws_s3_bucket_public_access_block" "cloudtrail" {
 }
 
 # CloudTrail が S3 バケットへ書き込むために必要なバケットポリシー。
+# CloudTrail はユーザーの IAM ロールではなく、AWS サービス自身（サービスプリンシパル: cloudtrail.amazonaws.com）でアクセスする。
+# そのため、バケットポリシーで cloudtrail.amazonaws.com を Principal として明示的に許可する必要がある。
+#
+# 【2つのステートメントが必要な理由】
+# CloudTrail の仕様上、ログ書き込み（PutObject）の前に必ずバケット ACL の確認（GetBucketAcl）を行う。
+# この事前確認が失敗すると Trail の作成自体が失敗するため、両方の許可が必須となる。
+#
+# 【Condition（AWS:SourceArn）による絞り込みの意味】
+# Principal を cloudtrail.amazonaws.com とするだけでは「どの CloudTrail でも書き込める」状態になる。
+# AWS:SourceArn で特定のアカウント・特定の証跡の ARN を指定することで、
+# このバケットへのアクセスを「このアカウントのこの証跡だけ」に制限できる（Confused Deputy 攻撃の防止）。
 resource "aws_s3_bucket_policy" "cloudtrail" {
   bucket     = aws_s3_bucket.cloudtrail.id
   depends_on = [aws_s3_bucket_public_access_block.cloudtrail]
@@ -105,6 +132,8 @@ resource "aws_s3_bucket_policy" "cloudtrail" {
     Version = "2012-10-17"
     Statement = [
       {
+        # CloudTrail の仕様: PutObject の前に GetBucketAcl で書き込み権限を事前確認する。
+        # このステートメントがないと Trail 作成時に "insufficient permissions" エラーになる。
         Sid    = "AWSCloudTrailAclCheck"
         Effect = "Allow"
         Principal = {
@@ -114,6 +143,8 @@ resource "aws_s3_bucket_policy" "cloudtrail" {
         Resource = aws_s3_bucket.cloudtrail.arn
         Condition = {
           StringEquals = {
+            # cloudtrail.amazonaws.com というサービスプリンシパル全体ではなく、
+            # このアカウント・この証跡からのリクエストのみを許可する。
             "AWS:SourceArn" = "arn:${local.partition}:cloudtrail:${var.region}:${local.account_id}:trail/${local.trail_name}"
           }
         }
@@ -125,10 +156,12 @@ resource "aws_s3_bucket_policy" "cloudtrail" {
           Service = "cloudtrail.amazonaws.com"
         }
         Action   = "s3:PutObject"
+        # AWSLogs/{account_id}/ 配下のみを対象にする（パス外への書き込みを防ぐ）。
         Resource = "${aws_s3_bucket.cloudtrail.arn}/AWSLogs/${local.account_id}/*"
         Condition = {
           StringEquals = {
-            "s3:x-amz-acl" = "bucket-owner-full-control"
+            # bucket-owner-full-control を要求することで、バケット所有者が常にログを読める状態を保証する。
+            "s3:x-amz-acl"  = "bucket-owner-full-control"
             "AWS:SourceArn" = "arn:${local.partition}:cloudtrail:${var.region}:${local.account_id}:trail/${local.trail_name}"
           }
         }
