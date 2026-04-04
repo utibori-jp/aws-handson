@@ -23,11 +23,12 @@ variable "project_name" {
   default     = "scs-handson"
 }
 
-# Finding Aggregator を有効化するかどうか。
-# マルチアカウント・マルチリージョンのフィンディングを1リージョンに集約する機能。
-# 単一アカウントのハンズオンでは不要なため、デフォルト false にしている。
-variable "enable_finding_aggregator" {
-  description = "Enable Security Hub finding aggregator for multi-region aggregation (not needed for single-account)"
-  type        = bool
-  default     = false
+variable "learner_account_id" {
+  description = "AWS account ID of the learner member account (from 00_Baseline: terraform output learner_account_id)"
+  type        = string
+}
+
+variable "peer_account_id" {
+  description = "AWS account ID of the peer member account used as Security Hub delegated administrator (from 00_Baseline: terraform output peer_account_id)"
+  type        = string
 }

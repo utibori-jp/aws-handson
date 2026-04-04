@@ -6,6 +6,6 @@
 # cd ../../00_Baseline && terraform output learner_account_id
 learner_account_id = "123456789012"
 
-# Finding Aggregator を有効化するかどうか（デフォルト: false）。
-# マルチリージョン集約を体験したい場合のみ true にする。
-# enable_finding_aggregator = true
+# Peer アカウントの ID（Security Hub 委任管理者として使用）。
+# cd ../../00_Baseline && terraform output peer_account_id
+peer_account_id = "234567890123"
