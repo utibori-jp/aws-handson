@@ -15,12 +15,6 @@
 # 【カスタムフォーマット】
 # デフォルトフォーマットに加え、vpc-id / subnet-id / az-id など拡張フィールドを追加。
 # Athena でクエリする際に VPC・サブネット単位の絞り込みが可能になる。
-#
-# 【Security Lake との関係】
-# VPC Flow Logs は Amazon Security Lake の自動ソースとしても取り込める。
-# security-lake モジュールを apply すると、このモジュールとは別に Security Lake が
-# VPC Flow Logs を OCSF 形式で正規化・集約する。両者は独立して共存できる。
-# （このモジュール: カスタム Parquet で詳細分析、Security Lake: OCSF で横断分析）
 # =============================================================================
 
 # ---
@@ -36,24 +30,6 @@ resource "aws_s3_bucket" "flowlogs" {
   }
 }
 
-resource "aws_s3_bucket_versioning" "flowlogs" {
-  bucket = aws_s3_bucket.flowlogs.id
-
-  versioning_configuration {
-    status = "Enabled"
-  }
-}
-
-resource "aws_s3_bucket_server_side_encryption_configuration" "flowlogs" {
-  bucket = aws_s3_bucket.flowlogs.id
-
-  rule {
-    apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
-    }
-  }
-}
-
 resource "aws_s3_bucket_public_access_block" "flowlogs" {
   bucket = aws_s3_bucket.flowlogs.id
 
@@ -65,43 +41,82 @@ resource "aws_s3_bucket_public_access_block" "flowlogs" {
 
 # VPC フローログサービスがバケットに書き込むためのバケットポリシー。
 # フローログは delivery.logs.amazonaws.com サービスプリンシパルから書き込まれる。
+data "aws_iam_policy_document" "flowlogs_bucket" {
+  statement {
+    sid    = "AWSLogDeliveryAclCheck"
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["delivery.logs.amazonaws.com"]
+    }
+    actions   = ["s3:GetBucketAcl"]
+    resources = [aws_s3_bucket.flowlogs.arn]
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [local.account_id]
+    }
+  }
+
+  statement {
+    sid    = "AWSLogDeliveryWrite"
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["delivery.logs.amazonaws.com"]
+    }
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.flowlogs.arn}/AWSLogs/${local.account_id}/*"]
+    condition {
+      test     = "StringEquals"
+      variable = "s3:x-amz-acl"
+      values   = ["bucket-owner-full-control"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [local.account_id]
+    }
+  }
+}
+
 resource "aws_s3_bucket_policy" "flowlogs" {
   bucket = aws_s3_bucket.flowlogs.id
+  policy = data.aws_iam_policy_document.flowlogs_bucket.json
+}
 
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "AWSLogDeliveryAclCheck"
-        Effect = "Allow"
-        Principal = {
-          Service = "delivery.logs.amazonaws.com"
-        }
-        Action   = "s3:GetBucketAcl"
-        Resource = aws_s3_bucket.flowlogs.arn
-        Condition = {
-          StringEquals = {
-            "aws:SourceAccount" = local.account_id
-          }
-        }
-      },
-      {
-        Sid    = "AWSLogDeliveryWrite"
-        Effect = "Allow"
-        Principal = {
-          Service = "delivery.logs.amazonaws.com"
-        }
-        Action   = "s3:PutObject"
-        Resource = "${aws_s3_bucket.flowlogs.arn}/AWSLogs/${local.account_id}/*"
-        Condition = {
-          StringEquals = {
-            "s3:x-amz-acl"      = "bucket-owner-full-control"
-            "aws:SourceAccount" = local.account_id
-          }
-        }
-      }
-    ]
-  })
+locals {
+  # カスタムフォーマット。デフォルトフィールド + 拡張フィールドを追加。
+  # Athena テーブル定義と一致させる必要がある。
+  # join() でリスト化することでフィールドの追加・削除を見やすくしている。
+  flow_log_format = join(" ", [
+    "$${version}",      # フローログのバージョン
+    "$${account-id}",   # フローが発生した AWS アカウント ID
+    "$${interface-id}", # トラフィックを記録した ENI の ID
+    "$${srcaddr}",      # 送信元 IP アドレス
+    "$${dstaddr}",      # 宛先 IP アドレス
+    "$${srcport}",      # 送信元ポート番号
+    "$${dstport}",      # 宛先ポート番号
+    "$${protocol}",     # IANA プロトコル番号（6=TCP, 17=UDP など）
+    "$${packets}",      # キャプチャ期間中のパケット数
+    "$${bytes}",        # キャプチャ期間中のバイト数
+    "$${start}",        # キャプチャ開始時刻（Unix タイムスタンプ）
+    "$${end}",          # キャプチャ終了時刻（Unix タイムスタンプ）
+    "$${action}",       # SG / NACL による許可(ACCEPT) または拒否(REJECT)
+    "$${log-status}",   # ログの記録状態（OK / NODATA / SKIPDATA）
+    # 拡張フィールド（VPC・サブネット・AZ 単位での Athena クエリ絞り込みに使う）
+    "$${vpc-id}",
+    "$${subnet-id}",
+    "$${instance-id}",  # ENI に紐づく EC2 インスタンス ID（なければ "-"）
+    "$${tcp-flags}",    # TCP フラグのビットマスク（SYN=2, ACK=16 など）
+    "$${type}",         # トラフィックの種別（IPv4 / IPv6 / EFA）
+    "$${pkt-srcaddr}",  # NATされている場合の元の送信元 IP
+    "$${pkt-dstaddr}",  # NATされている場合の元の宛先 IP
+    "$${region}",
+    "$${az-id}",
+    "$${sublocation-type}",
+    "$${sublocation-id}",
+  ])
 }
 
 # ---
@@ -109,7 +124,7 @@ resource "aws_s3_bucket_policy" "flowlogs" {
 # ---
 
 resource "aws_flow_log" "main" {
-  vpc_id          = local.vpc_id
+  vpc_id          = aws_vpc.main.id
   traffic_type    = "ALL" # ACCEPT / REJECT / ALL。全トラフィックを記録する。
   iam_role_arn    = null  # S3 出力は IAM ロール不要（CloudWatch Logs 出力時のみ必要）。
   log_destination = aws_s3_bucket.flowlogs.arn
@@ -124,9 +139,7 @@ resource "aws_flow_log" "main" {
     per_hour_partition = true # 時間ごとにパーティションを分けて Athena のスキャン量を削減する。
   }
 
-  # カスタムフォーマット。デフォルトフィールド + 拡張フィールドを追加。
-  # Athena テーブル定義と一致させる必要がある。
-  log_format = "$${version} $${account-id} $${interface-id} $${srcaddr} $${dstaddr} $${srcport} $${dstport} $${protocol} $${packets} $${bytes} $${start} $${end} $${action} $${log-status} $${vpc-id} $${subnet-id} $${instance-id} $${tcp-flags} $${type} $${pkt-srcaddr} $${pkt-dstaddr} $${region} $${az-id} $${sublocation-type} $${sublocation-id}"
+  log_format = local.flow_log_format
 
   tags = {
     Name = "${var.project_name}-vpc-flowlogs"
