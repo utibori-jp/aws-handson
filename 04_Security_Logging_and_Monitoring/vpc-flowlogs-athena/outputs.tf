@@ -22,3 +22,13 @@ output "vpc_flow_log_id" {
   description = "ID of the VPC Flow Log resource"
   value       = aws_flow_log.main.id
 }
+
+output "instance_id" {
+  description = "EC2 instance ID (use to filter flow logs by instance_id in Athena)"
+  value       = aws_instance.main.id
+}
+
+output "public_ip" {
+  description = "Public IP of the EC2 instance"
+  value       = aws_instance.main.public_ip
+}
