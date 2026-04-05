@@ -21,11 +21,7 @@ variable "project_name" {
   default     = "scs-handson"
 }
 
-# VPC フローログを有効化する対象 VPC の ID。
-# 00_Baseline の VPC ID を terraform output で取得して指定する。
-# 空文字列の場合は新規 VPC を作成してフローログを有効化する。
-variable "vpc_id" {
-  description = "VPC ID to enable flow logs on. Leave empty to create a new test VPC."
+variable "learner_account_id" {
+  description = "AWS account ID of the learner member account (from 00_Baseline: terraform output learner_account_id)"
   type        = string
-  default     = ""
 }
