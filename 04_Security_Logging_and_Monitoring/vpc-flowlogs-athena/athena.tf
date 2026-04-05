@@ -1,18 +1,33 @@
 # =============================================================================
 # athena.tf — vpc-flowlogs-athena
-# Athena データベース・テーブル・保存済みクエリを定義する。
+# Athena によるフローログ分析に必要なリソースを定義する。
 #
-# 【Athena による VPC フローログ分析】
-# S3 に蓄積された Parquet 形式のフローログを Athena で SQL 分析する。
-# 代表的なユースケース:
-#   - 拒否トラフィック（REJECT）の一覧表示 → 侵害試行の把握
-#   - 特定 IP からの通信確認 → 不審な外部アクセスの調査
-#   - 大量データ転送の検出（bytes が大きい通信）→ データ漏洩の検知
+# 【Athena・Glue・S3 の関係】
+# Athena はクエリエンジンのみで、スキーマ管理とデータ保管は別サービスが担う。
 #
-# 【Athena の仕組み】
-# Athena はサーバーレス SQL エンジン。S3 に置いたファイルをそのまま
-# テーブルとして SQL でクエリできる（データ移動不要）。
-# スキャンした分だけ課金されるため、パーティションで絞り込むことでコストを削減できる。
+#   S3（フローログバケット） ◄─ データ読み取り ─┐
+#   Glue Data Catalog        ◄─ スキーマ参照  ─── Athena（クエリエンジン）
+#   S3（クエリ結果バケット） ◄─ 結果書き出し  ─┘
+#   Athena ワークグループ       出力先・スキャン上限などの実行設定を管理
+#
+# このファイルでは上図の右側（Athena 側）を構成する。
+# S3 フローログバケットは flowlogs.tf で定義済み。
+#
+# 【クエリ結果が S3 に保存される理由】
+# Athena は常駐プロセスを持たないサーバーレスエンジンのため、
+# 結果をメモリで保持できない。クエリを実行すると結果を一旦 S3 に書き出し、
+# そこからクライアント（コンソール・SDK・JDBC）に渡す仕組みになっている。
+# A5M2 や DBeaver のように「叩いたらそのまま返ってくる」動作とは異なり、
+# クエリ結果バケットは省略不可の必須リソース。
+#
+# 【Glue Data Catalog とは】
+# テーブルのスキーマ（列名・型・S3 パス・パーティション定義）を管理する
+# マネージドメタデータストア。Athena はここを参照してどの S3 パスを
+# どのスキーマで読み取るかを決定する。データ本体は S3 に置いたまま。
+#
+# 【Athena による VPC フローログ分析のユースケース】
+# - 拒否トラフィック（REJECT）の一覧表示 → 侵害試行・ポートスキャンの把握
+# - EC2 からのアウトバウンド通信の確認 → 想定外の外部接続・C2 通信の検知
 # =============================================================================
 
 # ---
@@ -28,16 +43,6 @@ resource "aws_s3_bucket" "athena_results" {
   }
 }
 
-resource "aws_s3_bucket_server_side_encryption_configuration" "athena_results" {
-  bucket = aws_s3_bucket.athena_results.id
-
-  rule {
-    apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
-    }
-  }
-}
-
 resource "aws_s3_bucket_public_access_block" "athena_results" {
   bucket = aws_s3_bucket.athena_results.id
 
@@ -50,6 +55,8 @@ resource "aws_s3_bucket_public_access_block" "athena_results" {
 # ---
 # Athena ワークグループ
 # ---
+# クエリの出力先と実行制限をまとめて管理する単位。
+# チームや用途ごとにワークグループを分けることでコスト配分やアクセス制御ができる。
 
 resource "aws_athena_workgroup" "flowlogs" {
   name = "${var.project_name}-flowlogs"
@@ -73,8 +80,10 @@ resource "aws_athena_workgroup" "flowlogs" {
 }
 
 # ---
-# Glue データベース（Athena はメタデータ管理に Glue Data Catalog を使う）
+# Glue データベース
 # ---
+# Athena がメタデータを参照する際の名前空間。
+# データベース名にハイフンは使えないため、アンダースコアに置換する。
 
 resource "aws_glue_catalog_database" "flowlogs" {
   name = replace("${var.project_name}_vpc_flowlogs", "-", "_")
@@ -98,17 +107,17 @@ resource "aws_glue_catalog_table" "flowlogs" {
     "projection.enabled"   = "true"
     # パーティションプロジェクションを使うことで MSCK REPAIR TABLE が不要になる。
     # S3 に新しいパーティションが追加されても Athena が自動的に認識する。
-    "projection.year.type"  = "integer"
-    "projection.year.range" = "2024,2030"
-    "projection.month.type" = "integer"
-    "projection.month.range" = "1,12"
+    "projection.year.type"    = "integer"
+    "projection.year.range"   = "2024,2030"
+    "projection.month.type"   = "integer"
+    "projection.month.range"  = "1,12"
     "projection.month.digits" = "2"
-    "projection.day.type"   = "integer"
-    "projection.day.range"  = "1,31"
-    "projection.day.digits" = "2"
-    "projection.hour.type"  = "integer"
-    "projection.hour.range" = "0,23"
-    "projection.hour.digits" = "2"
+    "projection.day.type"     = "integer"
+    "projection.day.range"    = "1,31"
+    "projection.day.digits"   = "2"
+    "projection.hour.type"    = "integer"
+    "projection.hour.range"   = "0,23"
+    "projection.hour.digits"  = "2"
     "storage.location.template" = "s3://${aws_s3_bucket.flowlogs.bucket}/AWSLogs/${local.account_id}/vpcflowlogs/${var.region}/$${year}/$${month}/$${day}/$${hour}/"
   }
 
@@ -141,63 +150,65 @@ resource "aws_glue_catalog_table" "flowlogs" {
       }
     }
 
-    # カスタム log_format の列定義（flowlogs.tf の log_format と順序を合わせる）。
+    # カスタム log_format の列定義（flowlogs.tf の log_format と順序・型を合わせる）。
+    # フィールド名のハイフンは Glue/Athena の列名に使えないためアンダースコアに変換している。
     columns {
-      name = "version"
+      name = "version"       # フローログのバージョン
       type = "int"
     }
     columns {
-      name = "account_id"
+      name = "account_id"    # フローが発生した AWS アカウント ID
       type = "string"
     }
     columns {
-      name = "interface_id"
+      name = "interface_id"  # トラフィックを記録した ENI の ID
       type = "string"
     }
     columns {
-      name = "srcaddr"
+      name = "srcaddr"       # 送信元 IP アドレス
       type = "string"
     }
     columns {
-      name = "dstaddr"
+      name = "dstaddr"       # 宛先 IP アドレス
       type = "string"
     }
     columns {
-      name = "srcport"
+      name = "srcport"       # 送信元ポート番号
       type = "int"
     }
     columns {
-      name = "dstport"
+      name = "dstport"       # 宛先ポート番号
       type = "int"
     }
     columns {
-      name = "protocol"
+      name = "protocol"      # IANA プロトコル番号（6=TCP, 17=UDP など）
       type = "bigint"
     }
     columns {
-      name = "packets"
+      name = "packets"       # キャプチャ期間中のパケット数
       type = "bigint"
     }
     columns {
-      name = "bytes"
+      name = "bytes"         # キャプチャ期間中のバイト数
       type = "bigint"
     }
     columns {
-      name = "start"
+      name = "start"         # キャプチャ開始時刻（Unix タイムスタンプ）
       type = "bigint"
     }
     columns {
-      name = "end"
+      name = "end"           # キャプチャ終了時刻（Unix タイムスタンプ）
       type = "bigint"
     }
     columns {
-      name = "action"
+      name = "action"        # SG / NACL による許可(ACCEPT) または拒否(REJECT)
       type = "string"
     }
     columns {
-      name = "log_status"
+      name = "log_status"    # ログの記録状態（OK / NODATA / SKIPDATA）
       type = "string"
     }
+    # 拡張フィールド（VPC・サブネット・AZ 単位での絞り込みに使う）
     columns {
       name = "vpc_id"
       type = "string"
@@ -207,23 +218,23 @@ resource "aws_glue_catalog_table" "flowlogs" {
       type = "string"
     }
     columns {
-      name = "instance_id"
+      name = "instance_id"   # ENI に紐づく EC2 インスタンス ID（なければ "-"）
       type = "string"
     }
     columns {
-      name = "tcp_flags"
+      name = "tcp_flags"     # TCP フラグのビットマスク（SYN=2, ACK=16 など）
       type = "int"
     }
     columns {
-      name = "type"
+      name = "type"          # トラフィックの種別（IPv4 / IPv6 / EFA）
       type = "string"
     }
     columns {
-      name = "pkt_srcaddr"
+      name = "pkt_srcaddr"   # NAT されている場合の元の送信元 IP
       type = "string"
     }
     columns {
-      name = "pkt_dstaddr"
+      name = "pkt_dstaddr"   # NAT されている場合の元の宛先 IP
       type = "string"
     }
     columns {
@@ -248,104 +259,41 @@ resource "aws_glue_catalog_table" "flowlogs" {
 # ---
 # 保存済みクエリ（Named Query）
 # ---
-# よく使う分析クエリをあらかじめ保存しておき、Athena コンソールから
-# すぐに実行できるようにする。
+# 検証シナリオに対応するクエリをあらかじめ保存しておき、Athena コンソールから
+# すぐに実行できるようにする。SQL は queries/ ディレクトリで管理する。
+# 実行前に WHERE 句のプレースホルダ（public_ip / instance_id）を書き換えること。
+#
+# 【注意】保存済みクエリはワークグループ単位で管理される。
+# Athena コンソール右上のワークグループセレクタで
+# "<project_name>-flowlogs" に切り替えないと表示されない。
+# デフォルトの "primary" ワークグループでは見えない。
 
-# クエリ 1: 拒否トラフィックの一覧
-resource "aws_athena_named_query" "rejected_traffic" {
-  name      = "${var.project_name}-rejected-traffic"
+# クエリ 1: 外部からの REJECT ログ（nmap/curl による接続試行の確認）
+resource "aws_athena_named_query" "rejected_inbound" {
+  name      = "${var.project_name}-rejected-inbound"
   workgroup = aws_athena_workgroup.flowlogs.id
   database  = aws_glue_catalog_database.flowlogs.name
-
-  query = <<-SQL
-    -- 直近1時間の拒否トラフィック（上位 100 件）
-    -- REJECT されたトラフィックは SG や NACL によるブロックを意味する。
-    -- 同一送信元から大量の REJECT が来る場合はポートスキャンや侵害試行の可能性がある。
-    SELECT
-      srcaddr,
-      dstaddr,
-      srcport,
-      dstport,
-      protocol,
-      packets,
-      bytes,
-      action,
-      from_unixtime(start) AS start_time,
-      vpc_id,
-      subnet_id
-    FROM "${aws_glue_catalog_database.flowlogs.name}"."vpc_flow_logs"
-    WHERE
-      action = 'REJECT'
-      AND year  = year(current_date)
-      AND month = month(current_date)
-      AND day   = day(current_date)
-    ORDER BY packets DESC
-    LIMIT 100;
-  SQL
+  query = templatefile("${path.module}/queries/rejected_inbound.sql", {
+    db_name = aws_glue_catalog_database.flowlogs.name
+  })
 }
 
-# クエリ 2: 特定 IP からの通信を全件検索
-resource "aws_athena_named_query" "traffic_by_src_ip" {
-  name      = "${var.project_name}-traffic-by-src-ip"
+# クエリ 2: EC2 からのアウトバウンドトラフィック（SSM Agent・dnf などの自動通信）
+resource "aws_athena_named_query" "outbound_from_ec2" {
+  name      = "${var.project_name}-outbound-from-ec2"
   workgroup = aws_athena_workgroup.flowlogs.id
   database  = aws_glue_catalog_database.flowlogs.name
-
-  query = <<-SQL
-    -- 特定の送信元 IP アドレスからの通信を全件取得する。
-    -- 不審な IP を GuardDuty などで検知した後に詳細調査するときに使う。
-    -- WHERE の srcaddr を調査対象 IP に書き換えて実行すること。
-    SELECT
-      srcaddr,
-      dstaddr,
-      srcport,
-      dstport,
-      protocol,
-      packets,
-      bytes,
-      action,
-      from_unixtime(start) AS start_time,
-      vpc_id,
-      subnet_id,
-      instance_id
-    FROM "${aws_glue_catalog_database.flowlogs.name}"."vpc_flow_logs"
-    WHERE
-      srcaddr = '0.0.0.0'  -- ← 調査対象の IP アドレスに書き換える
-      AND year  = year(current_date)
-      AND month = month(current_date)
-      AND day   = day(current_date)
-    ORDER BY start_time DESC
-    LIMIT 200;
-  SQL
+  query = templatefile("${path.module}/queries/outbound_from_ec2.sql", {
+    db_name = aws_glue_catalog_database.flowlogs.name
+  })
 }
 
-# クエリ 3: 大量データ転送の検出（データ漏洩候補）
-resource "aws_athena_named_query" "large_data_transfer" {
-  name      = "${var.project_name}-large-data-transfer"
+# クエリ 3: REJECT されたポートの集計（インターネットスキャンの構造把握）
+resource "aws_athena_named_query" "rejected_ports_summary" {
+  name      = "${var.project_name}-rejected-ports-summary"
   workgroup = aws_athena_workgroup.flowlogs.id
   database  = aws_glue_catalog_database.flowlogs.name
-
-  query = <<-SQL
-    -- 本日の大量データ転送フロー（上位 50 件）。
-    -- bytes が異常に大きい ACCEPT フローはデータ漏洩の可能性を示す。
-    -- 特にプライベートサブネットから外部 IP への大量転送を重点的に確認する。
-    SELECT
-      srcaddr,
-      dstaddr,
-      dstport,
-      protocol,
-      sum(bytes)   AS total_bytes,
-      sum(packets) AS total_packets,
-      count(*)     AS flow_count,
-      vpc_id,
-      subnet_id
-    FROM "${aws_glue_catalog_database.flowlogs.name}"."vpc_flow_logs"
-    WHERE
-      action = 'ACCEPT'
-      AND year  = year(current_date)
-      AND month = month(current_date)
-      AND day   = day(current_date)
-    GROUP BY srcaddr, dstaddr, dstport, protocol, vpc_id, subnet_id
-    ORDER BY total_bytes DESC
-    LIMIT 50;
-  SQL
+  query = templatefile("${path.module}/queries/rejected_ports_summary.sql", {
+    db_name = aws_glue_catalog_database.flowlogs.name
+  })
 }
