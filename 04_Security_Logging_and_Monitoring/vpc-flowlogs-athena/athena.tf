@@ -59,7 +59,8 @@ resource "aws_s3_bucket_public_access_block" "athena_results" {
 # チームや用途ごとにワークグループを分けることでコスト配分やアクセス制御ができる。
 
 resource "aws_athena_workgroup" "flowlogs" {
-  name = "${var.project_name}-flowlogs"
+  name          = "${var.project_name}-flowlogs"
+  force_destroy = true # 保存済みクエリが残っていても destroy できるようにする
 
   configuration {
     result_configuration {
