@@ -1,19 +1,9 @@
 # terraform.tfvars.example
-# このファイルをコピーして terraform.tfvars を作成する。
-# terraform.tfvars には実際の値が入るため git にコミットしないこと。
-#
-#   cp terraform.tfvars.example terraform.tfvars
-#
-# 【apply 前の推奨手順】
-# config-securityhub モジュールを先に apply しておくと、Security Hub Findings
-# ソース（SH_FINDINGS）が apply 直後からデータを流し始めるため体験価値が高い。
-#
-# 【初回 apply の注意】
-# Security Lake は初回有効化時に AmazonSecurityLakeMetaStoreManager サービスリンクロールを
-# 自動作成する。ロール作成に時間がかかる場合、apply 中に以下のエラーが出ることがある：
-#   Error: AccessDeniedException: ...AWSServiceRoleForSecurityLake...
-# この場合は数分待ってから再度 terraform apply を実行する。
+# このファイルをコピーして terraform.tfvars を作成し、実際の値を入力してください。
+# terraform.tfvars は .gitignore 対象です。コミットしないでください。
 
-project_name = "scs-handson"
-region       = "ap-northeast-1"
-aws_profile  = "terraform-sso"
+# 00_Baseline の apply 後に以下で取得できます。
+#   cd ../../00_Baseline
+#   terraform output learner_account_id
+
+learner_account_id = "123456789012"
