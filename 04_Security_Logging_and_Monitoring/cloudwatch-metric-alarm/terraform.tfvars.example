@@ -1,0 +1,10 @@
+# terraform.tfvars.example
+# このファイルをコピーして terraform.tfvars を作成し、実際の値を入力してください。
+# terraform.tfvars は .gitignore 対象です。コミットしないでください。
+
+# Learner アカウントの ID（00_Baseline の output から取得）。
+# cd ../../00_Baseline && terraform output learner_account_id
+learner_account_id = "123456789012"
+
+# SNS 通知の送信先メールアドレス。空文字列の場合はサブスクリプションを作成しない。
+# alert_email = "your@example.com"

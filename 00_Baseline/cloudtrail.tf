@@ -1,22 +1,47 @@
 # =============================================================================
 # cloudtrail.tf — 00_Baseline
-# 管理アカウントにローカル証跡を作成し、API コールログを S3 バケットへ保管する。
+# 組織全体の API コールログを管理アカウントの S3 バケットへ集約する組織証跡を作成する。
 #
 # 【CloudTrail とは】
 # AWS アカウント内の API コールを記録するサービス。
 # 「誰が・いつ・何を操作したか」を追跡でき、セキュリティ調査・コンプライアンス対応の基盤となる。
 # SCS頻出：「CloudTrail を有効化してログを S3 に集約する」
 #
+# 【組織証跡（Organization Trail）とは】
+# is_organization_trail = true を設定すると、組織内のすべてのメンバーアカウントのログが
+# 管理アカウントの S3 バケットへ自動的に集約される。
+# 各メンバーアカウントでは証跡を個別に作成する必要がなく、一元管理が可能。
+#
+# 前提: Organizations が CloudTrail サービスへのアクセスを許可していること。
+# 以下を管理アカウントで一度だけ実行する（Terraform 管理外の操作）:
+#
+#   aws organizations enable-aws-service-access \
+#     --service-principal cloudtrail.amazonaws.com \
+#     --profile terraform-sso
+#
+# 有効化済みかどうかは以下で確認できる:
+#
+#   aws organizations list-aws-service-access-for-organization \
+#     --profile terraform-sso
+#
 # 【確認ポイント】
 # apply 後、以下で証跡が有効になっていることを確認する。
 #
-#   aws cloudtrail describe-trails --profile terraform-sso
+#   # 証跡の一覧と設定を確認（includeShadowTrails=false で組織証跡本体のみ表示）
+#   aws cloudtrail describe-trails \
+#     --include-shadow-trails false \
+#     --profile terraform-sso
+#
+#   # 証跡のロギングが開始されているかを確認
 #   aws cloudtrail get-trail-status \
 #     --name <trail-name> \
 #     --profile terraform-sso
 # =============================================================================
 
+data "aws_organizations_organization" "current" {}
+
 locals {
+  org_id     = data.aws_organizations_organization.current.id
   trail_name = "${var.project_name}-trail"
 }
 
@@ -153,8 +178,11 @@ resource "aws_s3_bucket_policy" "cloudtrail" {
         Principal = {
           Service = "cloudtrail.amazonaws.com"
         }
-        Action   = "s3:PutObject"
-        Resource = "${aws_s3_bucket.cloudtrail.arn}/AWSLogs/${local.account_id}/*"
+        Action = "s3:PutObject"
+        Resource = [
+          "${aws_s3_bucket.cloudtrail.arn}/AWSLogs/${local.org_id}/*",
+          "${aws_s3_bucket.cloudtrail.arn}/AWSLogs/${local.account_id}/*",
+        ]
         Condition = {
           StringEquals = {
             # bucket-owner-full-control はログの所有権をバケット所有者に移譲するための設定。
@@ -171,7 +199,8 @@ resource "aws_s3_bucket_policy" "cloudtrail" {
 # CloudTrail 証跡
 # ---
 
-# 管理アカウントのローカル証跡。
+# 組織証跡。管理アカウントから組織全体の API コールを一括収集する。
+# メンバーアカウントにはシャドウ証跡（読み取り専用の複製）が自動作成される。
 resource "aws_cloudtrail" "main" {
   name           = local.trail_name
   s3_bucket_name = aws_s3_bucket.cloudtrail.id
@@ -184,6 +213,11 @@ resource "aws_cloudtrail" "main" {
 
   # ダイジェストファイルを使ってログが改ざんされていないかを検証できる（SCS頻出）。
   enable_log_file_validation = true
+
+  # 組織証跡として有効化。
+  # 組織内のすべてのメンバーアカウントのログが自動的にこの証跡に集約される。
+  # 前提: Organizations で cloudtrail.amazonaws.com のサービスアクセスが有効化済みであること。
+  is_organization_trail = true
 
   # バケットポリシーが先に存在しないとCloudTrailの作成が失敗するため、明示的に依存関係を宣言する。
   depends_on = [aws_s3_bucket_policy.cloudtrail]

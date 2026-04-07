@@ -2,6 +2,7 @@
 # lambda.tf — acm-tls-encryption
 # ALB のバックエンドとなる最小構成の Lambda 関数。
 # HTTPS アクセスの成功を確認するための 200 レスポンスを返す。
+# CloudWatch ロググループを明示的に管理し、terraform destroy で確実に削除できるようにしている。
 #
 # 【Lambda を ALB ターゲットにする仕組み】
 # ALB は aws_lb_target_group（target_type = "lambda"）を通じて Lambda を呼び出す。
@@ -23,6 +24,13 @@
 # 【archive_file でインライン zip を使う理由】
 # 外部ファイル（src/handler.py）を置かずに Terraform コードのみでモジュールを自包できる。
 # apply 時に lambda_handler.zip が自動生成される（.gitignore に追加推奨）。
+#
+# 【CloudWatch ロググループを明示管理する理由】
+# Lambda 関数を deploy すると /aws/lambda/<関数名> のロググループが自動作成される。
+# この自動作成ロググループは Terraform の管理外なので terraform destroy では削除されず、
+# アカウントにゴミとして残り続ける。
+# aws_cloudwatch_log_group リソースとして先に宣言しておくことで Terraform の管理下に置き、
+# destroy 時にまとめて削除できるようにする。保持期間の明示的な設定も可能になる。
 #
 # 【確認ポイント】
 # Lambda を直接テスト（ALB を経由せず）：
@@ -132,4 +140,13 @@ resource "aws_lb_target_group_attachment" "lambda" {
   target_group_arn = aws_lb_target_group.lambda.arn
   target_id        = aws_lambda_function.backend.arn
   depends_on       = [aws_lambda_permission.alb]
+}
+
+# Lambda が初回実行時に自動作成するロググループを Terraform の管理下に置く。
+# 明示的に宣言しておくことで terraform destroy 時にこのロググループも削除対象になる。
+# 自動作成に任せると Terraform 管理外として残り続けるため、ハンズオン後のクリーンアップに支障が出る。
+# retention_in_days で保持期間を設定し、ログの無期限蓄積も防ぐ。
+resource "aws_cloudwatch_log_group" "lambda_log" {
+  name              = "/aws/lambda/${aws_lambda_function.backend.function_name}"
+  retention_in_days = 7
 }

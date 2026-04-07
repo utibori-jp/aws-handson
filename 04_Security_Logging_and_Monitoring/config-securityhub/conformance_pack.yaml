@@ -1,0 +1,97 @@
+Resources:
+
+  # ---
+  # S3 セキュリティ
+  # ---
+
+  S3BucketSSEEnabled:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: s3-bucket-server-side-encryption-enabled
+      Description: "S3 バケットにサーバーサイド暗号化が有効かどうかを確認する（CIS / SCS 頻出）"
+      Source:
+        Owner: AWS
+        SourceIdentifier: S3_BUCKET_SERVER_SIDE_ENCRYPTION_ENABLED
+
+  S3BucketPublicAccessProhibited:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: s3-bucket-public-access-prohibited
+      Description: "S3 バケットのパブリックアクセスブロックが有効かどうかを確認する"
+      Source:
+        Owner: AWS
+        SourceIdentifier: S3_BUCKET_LEVEL_PUBLIC_ACCESS_PROHIBITED
+
+  # ---
+  # IAM セキュリティ
+  # ---
+
+  IamUserMfaEnabled:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: iam-user-mfa-enabled
+      Description: "すべての IAM ユーザーに MFA が有効化されているか確認する"
+      Source:
+        Owner: AWS
+        SourceIdentifier: IAM_USER_MFA_ENABLED
+
+  IamPasswordPolicy:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: iam-password-policy
+      Description: "アカウントパスワードポリシーが最低要件を満たしているか確認する"
+      Source:
+        Owner: AWS
+        SourceIdentifier: IAM_PASSWORD_POLICY
+      InputParameters:
+        RequireUppercaseCharacters: "true"
+        RequireLowercaseCharacters: "true"
+        RequireSymbols: "true"
+        RequireNumbers: "true"
+        MinimumPasswordLength: "14"
+        PasswordReusePrevention: "24"
+        MaxPasswordAge: "90"
+
+  # ---
+  # ルートアカウント
+  # ---
+
+  RootAccountMfaEnabled:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: root-account-mfa-enabled
+      Description: "ルートアカウントに MFA が設定されているか確認する（CIS 1.1 / SCS 最頻出）"
+      Source:
+        Owner: AWS
+        SourceIdentifier: ROOT_ACCOUNT_MFA_ENABLED
+
+  RootAccountHardwareMfaEnabled:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: root-account-hardware-mfa-enabled
+      Description: "ルートアカウントにハードウェア MFA が設定されているか確認する（CIS 1.2）"
+      Source:
+        Owner: AWS
+        SourceIdentifier: ROOT_ACCOUNT_HARDWARE_MFA_ENABLED
+
+  # ---
+  # ネットワークセキュリティ
+  # ---
+
+  Ec2InstanceNoPublicIp:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: ec2-instance-no-public-ip
+      Description: "EC2 インスタンスにパブリック IP が直接割り当てられていないか確認する。パブリック IP の直接付与はインターネットへの意図しない露出につながる"
+      Source:
+        Owner: AWS
+        SourceIdentifier: EC2_INSTANCE_NO_PUBLIC_IP
+
+  VpcDefaultSecurityGroupClosed:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: vpc-default-security-group-closed
+      Description: "VPC のデフォルトセキュリティグループにインバウンド・アウトバウンドルールがないか確認する。デフォルト SG は意図しないリソースに適用されるリスクがある（SCS 頻出）"
+      Source:
+        Owner: AWS
+        SourceIdentifier: VPC_DEFAULT_SECURITY_GROUP_CLOSED

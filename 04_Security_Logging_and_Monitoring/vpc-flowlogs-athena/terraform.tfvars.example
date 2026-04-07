@@ -1,0 +1,9 @@
+# terraform.tfvars.example
+# このファイルをコピーして terraform.tfvars を作成し、実際の値を入力してください。
+# terraform.tfvars は .gitignore 対象です。コミットしないでください。
+
+# 00_Baseline の apply 後に以下で取得できます。
+#   cd ../../00_Baseline
+#   terraform output learner_account_id
+
+learner_account_id = "123456789012"

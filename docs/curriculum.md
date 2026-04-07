@@ -28,12 +28,10 @@
 
 ## 04_Security_Logging_and_Monitoring (セキュリティログとモニタリング)
 
-* vpc-flowlogs-athena: VPCフローログをS3に出力し、Athenaで拒否トラフィックをSQL分析。
-* guardduty-threat-detection: GuardDutyを有効化し、サンプル脅威リストを利用して検知を発火、EventBridge経由でSNS通知。カスタム脅威インテルリストとIPセットによる検知精度向上も含む。
-* cloudtrail-eventbridge-realtime: CloudTrailの危険なAPI操作（KMSキー削除予約、SG全開放等）をEventBridgeで即時検知し、SNSアラートを通知。
-* cloudwatch-metric-alarm: CIS AWS Foundations Benchmarkに準拠したCloudWatchメトリクスフィルタとアラームの実装。ルートユーザー操作・IAMポリシー変更・SG変更等の重要イベントを監視。
-* config-conformance-pack: AWS Config Conformance Packによるコンプライアンス評価。CISベンチマーク準拠のマネージドルールセットを適用し、アカウント全体の設定逸脱を継続的に検出。
-* security-hub-aggregation: AWS Security HubによるASFF（Amazon Security Finding Format）での検知結果一元集約。GuardDuty・Macie・Config等の検知をクロスサービスで統合管理。
+* vpc-flowlogs-athena: VPCフローログをParquet形式でS3に出力し、Athenaで拒否トラフィック・不審フロー・大容量転送をSQL分析。カスタムフォーマット（vpc-id/subnet-id/az-id拡張フィールド）採用。
+* cloudwatch-metric-alarm: CloudTrailモニタリングの2方式を1モジュールで対比実装。CIS Benchmark準拠のメトリクスフィルタ方式（6項目・5分遅延）とEventBridge直接検知方式（KMSキー削除予約・ルート操作等・秒単位）を同一SNSトピックに集約。
+* config-securityhub: AWS Config（Conformance Pack）とSecurity Hub（Organizations統合・委任管理者パターン）を一体実装。管理アカウント→Peer委任管理者→Learnerメンバーの3アカウント構成で、Config評価→SecurityHubスコアリングの関係を体験。
+* security-lake: Amazon Security LakeでCloudTrail・VPC Flow Logs・Security HubフィンディングをOCSF（Open Cybersecurity Schema Framework）形式で集約するデータレイク。KMS CMK必須・Lake Formation統合（Athenaクエリアクセス）を実装。サブスクライバーモデル（クエリアクセス型 vs データアクセス型）はコメントアウトしたサンプルコードとして収録。
 
 ## 05_Threat_Detection_and_Incident_Response (脅威検出とインシデント対応)
 
