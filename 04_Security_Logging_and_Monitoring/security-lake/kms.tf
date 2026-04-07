@@ -46,6 +46,28 @@ data "aws_iam_policy_document" "security_lake_kms" {
       values   = [local.account_id]
     }
   }
+
+  # Security Lake リソース管理用 SLR に暗号化・復号権限を付与する。
+  # AWSServiceRoleForSecurityLakeResourceManagement は Security Lake が
+  # S3 バケットへのデータ書き込み・読み取り時に使用する SLR。
+  # サービスプリンシパルではなくロールとして直接 KMS にアクセスするため、
+  # securitylake.amazonaws.com への許可とは別に必要。
+  statement {
+    sid    = "Allow Security Lake Resource Management SLR"
+    effect = "Allow"
+
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:${local.partition}:iam::${local.account_id}:role/aws-service-role/resource-management.securitylake.amazonaws.com/AWSServiceRoleForSecurityLakeResourceManagement"]
+    }
+
+    actions = [
+      "kms:GenerateDataKey",
+      "kms:Decrypt",
+      "kms:DescribeKey",
+    ]
+    resources = ["*"]
+  }
 }
 
 resource "aws_kms_key" "security_lake" {
