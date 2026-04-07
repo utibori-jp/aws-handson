@@ -30,6 +30,11 @@
 #   terraform import aws_iam_service_linked_role.security_lake \
 #     arn:aws:iam::<learner_account_id>:role/aws-service-role/securitylake.amazonaws.com/AWSServiceRoleForSecurityLake
 #
+# 【⚠️ apply 後に createStatus: FAILED になる場合】
+# destroy → 再 apply を繰り返しても FAILED が続く場合、前回の残骸（Glue Database・S3 バケット）が
+# Lake Formation の権限モデルにより不可視の状態で残っているケースがある。
+# 詳細な原因と解決手順は TROUBLESHOOTING.md を参照すること。
+#
 # 【前提条件】terraform apply 前に一度だけ実行する（冪等。実行済みでも安全）
 # ─────────────────────────────────────────────────────────────────────────────
 # ここで行うのは「Security Lake の有効化」ではなく「Organizations レベルの管理設定」。
