@@ -1,25 +1,83 @@
 # Security Lake Terraform 構築トラブルシューティング
 
-## 概要
+## よくあるトラブルと原因
+
+| 症状 | 考えられる原因 |
+|------|---------------|
+| S3 に parquet があるのに Athena で 0 件 | Iceberg のスナップショットにまだコミットされていない（ETL の実行待ち）。`.metadata.json` の `current-snapshot-id` が `-1` のままなら未コミット。 |
+| `list-data-lake-exceptions` に KMS エラー | SLR（`AWSServiceRoleForSecurityLakeResourceManagement`）に対して KMS キーポリシーで必要な権限（`GenerateDataKey`, `Decrypt`, `DescribeKey` 等）が付与されていない。 |
+| `list-data-lake-exceptions` に CloudTrail エラー | 組織の証跡（`IsOrganizationTrail: true`）が管理アカウントに作成されていない。 |
+| `terraform destroy` 後の再 `apply` で FAILED | 前回の Glue Database / S3 バケットが残っている。後述の手順で手動削除が必要。 |
+| 例外のタイムスタンプが更新されない | 対処済みでも例外の再評価には時間がかかる（数時間〜）。すぐに消えなくても問題ない場合がある。 |
+
+## 調査手順
+
+問題が発生した場合、以下の順序で調査することを推奨する。
+
+```bash
+# 1. Security Lake の例外を確認
+aws securitylake list-data-lake-exceptions \
+  --regions "ap-northeast-1" --profile learner-admin
+
+# 2. Iceberg メタデータの状態を確認（スナップショットが空かどうか）
+aws s3 ls s3://<security-lake-bucket>/aws/CLOUD_TRAIL_MGMT/2.0/metadata/ \
+  --profile learner-admin
+
+# 3. CloudTrail で KMS の AccessDenied を探す
+aws cloudtrail lookup-events \
+  --lookup-attributes AttributeKey=EventSource,AttributeValue=kms.amazonaws.com \
+  --start-time $(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ) \
+  --max-results 50 --profile learner-admin \
+  --query 'Events[?contains(CloudTrailEvent, `AccessDenied`)].{Time:EventTime, Name:EventName, User:Username}' \
+  --output table
+
+# 4. Glue 関連のエラーを探す
+aws cloudtrail lookup-events \
+  --lookup-attributes AttributeKey=EventSource,AttributeValue=glue.amazonaws.com \
+  --start-time $(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ) \
+  --max-results 50 --profile learner-admin \
+  --query 'Events[?contains(CloudTrailEvent, `AccessDenied`) || contains(CloudTrailEvent, `Error`)].{Time:EventTime, Name:EventName, User:Username}' \
+  --output table
+
+# 5. parquet データの存在確認
+aws s3 ls s3://<security-lake-bucket>/aws/CLOUD_TRAIL_MGMT/2.0/ \
+  --recursive --profile learner-admin | grep -v metadata
+```
+
+## ハンズオンがうまくいかない場合
+
+上記のトラブルシューティングを試しても解決しない場合は、ソースコードとコメントを読んで Security Lake の仕組みを理解することをハンズオンのゴールとしてしてほしい。
+
+Security Lake の Terraform 管理は本番環境でも苦労するポイントであり、以下のような学びが得られればこのモジュールとしては十分。
+
+- Security Lake が裏側で何を自動作成するのか（S3・Glue・Lake Formation・SLR）
+- Apache Iceberg テーブルの仕組み（スナップショットベースのメタデータ管理）
+- KMS キーポリシーにおける SLR への権限付与の考え方
+- Organizations の委任管理者モデルと Security Lake の関係
+- マネージドサービスを IaC で管理する際の一般的な課題（state 外リソース、非同期処理、可観測性の低さ）
+
+---
+
+## createStatus: FAILED の解決記録
+
+### 概要
 
 Amazon Security Lake を Terraform で有効化する際、`aws_securitylake_data_lake` の作成が
 `FAILED` になり続けた事象の原因調査と解決までの記録。
 
-## 環境
+### 環境
 
 - Terraform AWS Provider: ~> 6.0
 - リージョン: ap-northeast-1
 - アカウント構成: Organizations 委任管理者パターン（管理アカウント → learner アカウントへ委任）
 - 認証: AWS IAM Identity Center（SSO）経由、AdministratorAccess 相当
 
----
-
-## 事象
+### 事象
 
 `terraform apply` で `aws_securitylake_data_lake.main` を作成すると、毎回
 `createStatus: FAILED` になる。`terraform destroy` → 再 `apply` を繰り返しても同じ結果。
 
-## 原因調査の経過
+### 原因調査の経過
 
 ### 1. CloudTrail・Lambda ログの確認
 
@@ -58,7 +116,7 @@ aws glue get-database \
 
 ---
 
-## 根本原因
+### 根本原因
 
 原因は 2 つの要素が組み合わさったもの。
 
@@ -93,7 +151,7 @@ Glue Database が「存在しないように見える」状態になっていた
 
 ---
 
-## 解決手順
+### 解決手順
 
 ### Step 1: Lake Formation Admin に自分を登録
 
