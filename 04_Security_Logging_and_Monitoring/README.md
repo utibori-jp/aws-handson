@@ -14,7 +14,7 @@ CloudTrail モニタリングの2方式を対比して学ぶモジュール。�
 
 ## config-securityhub
 
-**前提**: 単一アカウント。Config の課金に注意（実験後に destroy 推奨）。
+**前提**: learner アカウント + peer アカウント + 管理アカウント（3アカウント構成）。Config の課金に注意（実験後に destroy 推奨）。
 
 AWS Config と Security Hub を組み合わせてコンプライアンス評価とポスチャ可視化を行うモジュール。Config は「リソースの設定状態が正しいか」を継続的に評価する静的評価エンジンであり、Security Hub はその結果を ASFF 形式で集約してセキュリティスコア（0〜100%）として可視化する。両者を一体で体験することで「Config がルールを評価 → Security Hub がスコアを示す」という関係が直感的に理解できる。Conformance Pack には S3 暗号化・IAM MFA・ルートアカウント MFA・ネットワーク系ルールを含め、実際の準拠状況を確認できる。GuardDuty（5章）を有効化すると、このモジュールで構築した Security Hub にフィンディングが自動的に流れ込んでくる。
 
@@ -26,19 +26,26 @@ VPC のネットワークトラフィックをログとして蓄積し、SQL で
 
 ## security-lake
 
-**前提**: 単一アカウント。config-securityhub を先に apply しておくと体験価値が高い。
+**前提**: 単一アカウント（learner）。`lakeformation_admin_role_arn` の取得が必要（詳細は terraform.tfvars.example 参照）。
 
-Amazon Security Lake を有効化し、CloudTrail・VPC Flow Logs・Security Hub フィンディングを OCSF（Open Cybersecurity Schema Framework）形式で集約するデータレイクを構成するモジュール。各サービスが独自フォーマットで出力するログを単一の標準スキーマに正規化することで、「CloudTrail の操作ログと VPC Flow Logs を同一クエリで横断分析する」といった高度な調査が可能になる。Security Lake は KMS カスタマーマネージドキーを必須とする点が SCS 試験で問われやすい。サブスクライバーモデル（クエリアクセス型 vs データアクセス型）の違いも頻出トピックである。
+Amazon Security Lake を有効化し、CloudTrail・VPC Flow Logs・Security Hub フィンディングを OCSF（Open Cybersecurity Schema Framework）形式で集約するデータレイクを構成するモジュール。各サービスが独自フォーマットで出力するログを単一の標準スキーマに正規化することで、「CloudTrail の操作ログと VPC Flow Logs を同一クエリで横断分析する」といった高度な調査が可能になる。Security Lake は KMS カスタマーマネージドキーを必須とする点が SCS 試験で問われやすい。Athena からのクエリアクセスは Lake Formation による権限管理で実現しており、サブスクライバーモデル（クエリアクセス型 vs データアクセス型）はコメントアウトしたサンプルコードとして subscriber.tf に収録している。
 
 ## 共通の始め方
 
 ```bash
 cd cloudwatch-metric-alarm   # 対象モジュールに移動
 cp terraform.tfvars.example terraform.tfvars
-# terraform.tfvars を編集して project_name 等を設定する
+# terraform.tfvars を編集して learner_account_id 等を設定する
 terraform init
 terraform plan
 terraform apply
 # 実験後
 terraform destroy
+```
+
+`learner_account_id` / `peer_account_id` は 00_Baseline の outputs から取得できる。
+
+```bash
+cd ../../00_Baseline
+terraform output
 ```
