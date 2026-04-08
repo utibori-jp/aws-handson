@@ -2,46 +2,33 @@
 
 ## 概要
 
-04章「検出」から続く「**自動対応（Automated Response）**」を実装する章。
-SCS 試験 Domain 1「Threat Detection and Incident Response（約 14%）」を中心にカバーする。
+脅威の検知・分類・自動インシデントレスポンスを Terraform で実装し、手を動かして理解する章。
+SCS 試験で頻出の「GuardDuty による振る舞い検知」「Macie による機密データ分類」「EventBridge + Lambda による自動修復」をカバーする。
 
-## モジュール一覧
+## guardduty-and-remediation
 
-| モジュール | 学習テーマ | 前提 |
-|---|---|---|
-| [guardduty-auto-remediation](guardduty-auto-remediation/) | GuardDuty フィンディング → Lambda 自動修復（IAM キー無効化 / EC2 隔離） | 単一アカウント ⚠️ 下記注意事項を読むこと |
-| [secrets-manager-rotation](secrets-manager-rotation/) | Secrets Manager シークレット自動ローテーション（4フェーズ Lambda） | 単一アカウント |
-| [macie-sensitive-data](macie-sensitive-data/) | Macie による S3 内 PII 自動検出 + EventBridge 通知 | 単一アカウント |
+**前提**: learner アカウント（VPC 不要）
 
-## ⚠️ guardduty-auto-remediation の前提条件
+GuardDuty は CloudTrail・VPC Flow Logs・DNS ログを自動的に分析し、「振る舞いの異常」（不正な IAM 認証情報の使用・C2 通信・暗号通貨マイニング等）を検知する。このモジュールでは検知設定と自動修復を一体で構築する。
 
-**04章の `guardduty-threat-detection` を apply 済みの場合は、先に destroy してからこのモジュールを apply すること。**
+カスタム ThreatIntelSet（既知悪性 IP リスト）と IPSet（誤検知除外リスト）を S3 に配置して GuardDuty に登録することで、AWS 標準の脅威インテリジェンスに加えて自組織固有の検知精度向上を体験する。
 
-GuardDuty Detector は 1 リージョンに 1 つしか作成できない。
-両モジュールを同時に apply すると `aws_guardduty_detector` の作成でエラーになる。
+自動修復は 2 つの検知起点を使い分ける。**CloudTrail 起点**では KMS キー削除予約・SG 全開放（0.0.0.0/0）という「設定の危険操作」を発生した瞬間に検知して Lambda が即時差し戻す。**GuardDuty 起点**では侵害された IAM 認証情報の使用・EC2 の不正通信という「攻撃者の行動パターン」を受けて Lambda がキー無効化・ネットワーク隔離を実行する。EC2 は終了（Terminate）ではなく隔離（Isolate）することでフォレンジック調査に必要な証拠を保全する設計になっている（SCS 頻出の観点）。
 
-```bash
-# 04章の GuardDuty を先に destroy する
-cd ../../04_Security_Logging_and_Monitoring/guardduty-threat-detection
-terraform destroy
+## macie-sensitive-data
 
-# その後にこのモジュールを apply する
-cd ../../05_Threat_Detection_and_Incident_Response/guardduty-auto-remediation
-terraform apply
-```
+**前提**: learner アカウント（VPC 不要）
 
-## 前提条件マトリクス
+Macie は S3 オブジェクトの「内容」を機械学習でスキャンして機密データを静的に検出する。GuardDuty が「何が起きたか」を検知するのに対し、Macie は「何が入っているか」を分類する補完的なサービスで、SCS 試験では両者の役割の違いが頻出する。
 
-| モジュール | 単一アカウント | 依存 | 備考 |
-|---|---|---|---|
-| `guardduty-auto-remediation` | ✅ apply 可 | 04章 guardduty-threat-detection を先に destroy | GuardDuty Detector は 1 リージョンに 1 つ |
-| `secrets-manager-rotation` | ✅ apply 可 | なし | apply 直後にローテーションが自動発動する |
-| `macie-sensitive-data` | ✅ apply 可 | なし | スキャン完了まで数分〜十数分かかる |
+このモジュールでは、クレジットカード番号・SSN（マイナンバー相当）等のダミー機密データを含む CSV ファイルを S3 に配置し、ONE_TIME スキャンジョブで Macie の finding 生成から EventBridge → SNS 通知までのパイプラインを体験する。マネージドデータ識別子（100 種類以上の組み込みパターン）により、コード不要で機密データを検出できることを確認する。
 
 ## 共通の始め方
 
 ```bash
-cd secrets-manager-rotation   # 対象モジュールに移動（推奨: secrets から開始）
+cd guardduty-and-remediation   # 対象モジュールに移動
+cp terraform.tfvars.example terraform.tfvars
+# terraform.tfvars を編集して aws_profile / alert_email を設定
 terraform init
 terraform plan
 terraform apply
@@ -49,8 +36,4 @@ terraform apply
 terraform destroy
 ```
 
-## 推奨実装順序
-
-1. **`secrets-manager-rotation`** — 副作用が少なく、apply 直後にローテーションを確認できる
-2. **`guardduty-auto-remediation`** — 04章との連続性が強い。Lambda 最小権限が SCS 核心テーマ
-3. **`macie-sensitive-data`** — GuardDuty（動的検出）vs. Macie（静的データ検出）の対比として最後に
+`aws_profile` には Learner アカウントへの権限を持つプロファイル（`learner-admin`）を設定する。
