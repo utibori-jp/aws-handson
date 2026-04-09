@@ -46,22 +46,17 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "macie_test" {
 # Macie のビルトイン managed data identifier が検出するパターンを含むテスト CSV。
 # クレジットカード番号（CREDIT_CARD_NUMBER）と SSN（US_SOCIAL_SECURITY_NUMBER）が
 # Macie によって検出されることを確認する。
+# テストデータは test_data/test-customers.csv に分離している。
 resource "aws_s3_object" "dummy_pii_csv" {
   bucket       = aws_s3_bucket.macie_test.id
   key          = "customer-data/test-customers.csv"
   content_type = "text/csv"
-
-  # すべて架空のテスト値。実際の個人情報は含まない。
-  content = <<-CSV
-    customer_id,name,email,credit_card,ssn,notes
-    1001,Test User A,test-a@example.com,4111111111111111,000-12-3456,dummy record for macie test
-    1002,Test User B,test-b@example.com,5500005555555559,000-23-4567,dummy record for macie test
-    1003,Test User C,test-c@example.com,378282246310005,000-34-5678,dummy record for macie test
-  CSV
+  source       = "${path.module}/test_data/test-customers.csv"
+  etag         = filemd5("${path.module}/test_data/test-customers.csv")
 
   tags = {
     Purpose = "Macie-Detection-Test"
-    Note    = "Contains dummy PII patterns for Macie scanning — not real personal data"
+    Note    = "Contains dummy PII patterns for Macie scanning - not real personal data"
   }
 }
 

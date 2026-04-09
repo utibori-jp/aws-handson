@@ -1,0 +1,4 @@
+customer_id,name,email,credit_card,ssn,notes
+1001,Test User A,test-a@example.com,4111111111111111,000-12-3456,dummy record for macie test
+1002,Test User B,test-b@example.com,5500005555555559,000-23-4567,dummy record for macie test
+1003,Test User C,test-c@example.com,378282246310005,000-34-5678,dummy record for macie test

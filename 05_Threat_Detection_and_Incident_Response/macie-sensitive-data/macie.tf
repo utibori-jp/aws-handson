@@ -13,6 +13,32 @@
 # Macie がビルトインで持つ検出パターンのセット。
 # CREDIT_CARD_NUMBER / US_SOCIAL_SECURITY_NUMBER / AWS_CREDENTIALS / EMAIL_ADDRESS など
 # 100 種類以上のパターンが含まれており、カスタマイズなしで機密データを検出できる。
+#
+# 【確認ポイント】
+# apply 後、ジョブ完了まで数分〜十数分待ってから以下を実行する。
+#
+# 1. ジョブステータス確認（COMPLETE になるまで繰り返す）:
+#   aws macie2 describe-classification-job \
+#     --job-id "$(terraform output -raw classification_job_id)" \
+#     --profile learner-admin --region ap-northeast-1 \
+#     --query '{Status: jobStatus, Statistics: statistics}'
+#   # → jobStatus が COMPLETE になるまで待つ
+#   # → statistics.approximateNumberOfObjectsToProcess でスキャン対象オブジェクト数を確認
+#
+# 2. フィンディング一覧（ジョブ完了後）:
+#   aws macie2 list-findings \
+#     --profile learner-admin --region ap-northeast-1 \
+#     --query 'findingIds'
+#   # → PII が検出された場合にフィンディング ID が表示される
+#
+# 3. フィンディング詳細（<FINDING_ID> は手順2で取得）:
+#   aws macie2 get-findings \
+#     --finding-ids "<FINDING_ID>" \
+#     --profile learner-admin --region ap-northeast-1 \
+#     --query 'findings[0].{Type:type,Severity:severity.description,S3Object:resourcesAffected.s3Object.key,DataIdentifiers:classificationDetails.result.sensitiveData[*].category}'
+#   # → Type: SensitiveData:S3Object/Personal
+#   # → S3Object: customer-data/test-customers.csv
+#   # → DataIdentifiers に FINANCIAL_INFORMATION が含まれること
 # =============================================================================
 
 # Macie を有効化する。
@@ -28,6 +54,35 @@ resource "aws_macie2_account" "main" {
 # 分類ジョブ（1回限り）。
 # ONE_TIME: 1 回だけスキャンして終了。課金が継続しないためハンズオンに適している。
 # SCHEDULED: 定期的にスキャン（本番向け。課金継続のためハンズオンでは使わない）。
+#
+# 【destroy 時の注意】
+# ONE_TIME ジョブは完了（COMPLETE）後、AWS API レベルで状態変更が禁止される。
+# これはガバナンス上の意図的な設計で、「いつ・どのバケットを・誰がスキャンしたか」という
+# 監査証跡を事後に改ざん・削除できないようにするため。SOC2 / PCI DSS 等のコンプライアンス要件に対応。
+# GuardDuty の findings が 90 日間削除できないのと同じ思想（セキュリティサービスの記録は操作者が消せない）。
+#
+# Terraform の destroy は内部的に UpdateClassificationJob でジョブを CANCELLED にしようとするが、
+# 完了済みジョブには適用できないため ValidationException で失敗する。
+# destroy 前に以下で state から切り離す必要がある:
+#   terraform state rm aws_macie2_classification_job.scan
+#   terraform destroy
+# ジョブ記録が AWS 上に残っても追加課金はなく、Macie 無効化後は実害もない。
+#
+# スキャンを再実行したい場合は CLI で新しいジョブを作成する（既存ジョブの再実行は不可）:
+#   ACCOUNT_ID=$(aws sts get-caller-identity --profile learner-admin --query Account --output text)
+#   BUCKET=$(terraform output -raw test_bucket_name)
+#   aws macie2 create-classification-job \
+#     --job-type ONE_TIME \
+#     --name "scs-handson-pii-scan-2" \
+#     --s3-job-definition "{\"bucketDefinitions\":[{\"accountId\":\"${ACCOUNT_ID}\",\"buckets\":[\"${BUCKET}\"]}]}" \
+#     --profile learner-admin --region ap-northeast-1
+#
+# 【EventBridge への再発行について】
+# Macie には重複抑制の仕様があり、同一オブジェクトから同じ種類の findings が検出された場合、
+# 既存 finding の更新扱いとなり EventBridge イベントが発火しない。
+# EventBridge → SNS → メール の経路を再度テストしたい場合は、
+# test_data/test-customers.csv を編集（行追加など）してから terraform apply し、
+# S3 オブジェクトを更新した上で新しいジョブを作成する。
 resource "aws_macie2_classification_job" "scan" {
   job_type = "ONE_TIME"
   name     = "${var.project_name}-pii-scan"
