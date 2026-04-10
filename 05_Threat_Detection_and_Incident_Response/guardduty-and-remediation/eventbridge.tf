@@ -17,6 +17,54 @@
 # 【ルールを分離する理由（最小権限の実現）】
 #   1 つのルールで全イベントを受けると、対応 Lambda に広い権限が必要になる。
 #   イベントタイプ別にルールを分け、Lambda もロールも分離することで最小権限を実現する。
+#
+# 【確認ポイント】
+# CloudTrail 起点の修復を手動でトリガーして動作を確認する。
+#
+# ① KMS キー削除予約 → cancel-kms-deletion Lambda の修復確認
+#    # テスト用 KMS キーを作成する
+#    KEY_ID=$(aws kms create-key \
+#      --description "test-key-for-guardduty-remediation" \
+#      --profile learner-admin --region ap-northeast-1 \
+#      --query 'KeyMetadata.KeyId' --output text)
+#    echo "KeyId: $KEY_ID"
+#
+#    # 削除予約を実行する（EventBridge → Lambda が即時反応する）
+#    aws kms schedule-key-deletion \
+#      --key-id "$KEY_ID" \
+#      --pending-window-in-days 7 \
+#      --profile learner-admin --region ap-northeast-1
+#
+#    # Lambda ログで自動キャンセルを確認する
+#    aws logs tail "/aws/lambda/scs-handson-cancel-kms-deletion" \
+#      --follow --profile learner-admin --region ap-northeast-1
+#    # → "CancelKeyDeletion succeeded" および "EnableKey succeeded" が記録されることを確認する
+#    # → alert_email を設定した場合は SNS 通知メールが届くことを確認する
+#
+# ② SG 全開放 → revoke-sg-ingress Lambda の修復確認
+#    # デフォルト VPC の ID を取得してテスト用 SG を作成する
+#    VPC_ID=$(aws ec2 describe-vpcs \
+#      --filters Name=isDefault,Values=true \
+#      --profile learner-admin --region ap-northeast-1 \
+#      --query 'Vpcs[0].VpcId' --output text)
+#    SG_ID=$(aws ec2 create-security-group \
+#      --group-name "test-sg-remediation" \
+#      --description "test sg for guardduty-and-remediation" \
+#      --vpc-id "$VPC_ID" \
+#      --profile learner-admin --region ap-northeast-1 \
+#      --query 'GroupId' --output text)
+#    echo "SgId: $SG_ID"
+#
+#    # 全開放インバウンドルールを追加する（EventBridge → Lambda が即時反応する）
+#    aws ec2 authorize-security-group-ingress \
+#      --group-id "$SG_ID" \
+#      --protocol tcp --port 22 --cidr 0.0.0.0/0 \
+#      --profile learner-admin --region ap-northeast-1
+#
+#    # Lambda ログで自動取り消しを確認する
+#    aws logs tail "/aws/lambda/scs-handson-revoke-sg-ingress" \
+#      --follow --profile learner-admin --region ap-northeast-1
+#    # → "Revoked 1 dangerous rule(s)" が記録されることを確認する
 # =============================================================================
 
 # ---------------------------------------------------------------------------
