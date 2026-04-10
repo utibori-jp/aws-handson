@@ -56,9 +56,15 @@
 #    echo "SgId: $SG_ID"
 #
 #    # 全開放インバウンドルールを追加する（EventBridge → Lambda が即時反応する）
+#    # IPv4 全開放
 #    aws ec2 authorize-security-group-ingress \
 #      --group-id "$SG_ID" \
 #      --protocol tcp --port 22 --cidr 0.0.0.0/0 \
+#      --profile learner-admin --region ap-northeast-1
+#    # IPv6 全開放（IPv6 が有効な VPC の場合）
+#    aws ec2 authorize-security-group-ingress \
+#      --group-id "$SG_ID" \
+#      --protocol tcp --port 22 --cidr ::/0 \
 #      --profile learner-admin --region ap-northeast-1
 #
 #    # Lambda ログで自動取り消しを確認する
@@ -105,25 +111,17 @@ resource "aws_cloudwatch_event_rule" "sg_ingress_all_open" {
   name        = "${var.project_name}-remediate-sg-ingress"
   description = "Detect AuthorizeSecurityGroupIngress (0.0.0.0/0) and trigger auto-remediation Lambda"
 
+  # EventBridge のイベントパターンは OR 条件で複数の pattern を書けない（AND のみ）。
+  # IPv4（0.0.0.0/0）と IPv6（::/0）を 1 つのパターンで同時フィルタできないため、
+  # それぞれ別ルールに分けるか、フィルタを外して Lambda 側で判定する方法を取る。
+  # ここでは IPv4 と IPv6 のどちらかが存在すれば Lambda を起動するよう
+  # cidrIp / cidrIpv6 のフィルタを外し、Lambda 側で全開放ルールを判定する。
   event_pattern = jsonencode({
     source      = ["aws.ec2"]
     detail-type = ["AWS API Call via CloudTrail"]
     detail = {
       eventName = ["AuthorizeSecurityGroupIngress"]
       errorCode = [{ exists = false }]
-      # EventBridge でイベントパターンに 0.0.0.0/0 を含む操作だけをフィルタリングする。
-      # これにより特定の CIDR 許可（社内 IP 等）は Lambda を起動しない。
-      requestParameters = {
-        ipPermissions = {
-          items = {
-            ipRanges = {
-              items = {
-                cidrIp = ["0.0.0.0/0"]
-              }
-            }
-          }
-        }
-      }
     }
   })
 

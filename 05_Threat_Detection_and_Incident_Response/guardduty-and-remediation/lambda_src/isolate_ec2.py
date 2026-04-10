@@ -25,6 +25,7 @@ import boto3
 import json
 import logging
 import os
+from botocore.exceptions import ClientError
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -132,12 +133,25 @@ def _get_or_create_quarantine_sg(ec2, vpc_id, instance_id):
     sg_id = response["GroupId"]
 
     # 新規 SG のデフォルトアウトバウンドルール（全許可）を削除してすべてのトラフィックをブロックする。
+    # IPv4（0.0.0.0/0）と IPv6（::/0）の両方を削除する。
+    # IPv6 のみ削除対象が存在しない場合（IPv6 無効 VPC）は API がエラーを返すため個別に実行する。
     ec2.revoke_security_group_egress(
         GroupId=sg_id,
         IpPermissions=[
             {"IpProtocol": "-1", "IpRanges": [{"CidrIp": "0.0.0.0/0"}]}
         ],
     )
+    try:
+        ec2.revoke_security_group_egress(
+            GroupId=sg_id,
+            IpPermissions=[
+                {"IpProtocol": "-1", "Ipv6Ranges": [{"CidrIpv6": "::/0"}]}
+            ],
+        )
+    except ClientError as e:
+        # IPv6 が無効な VPC では ::/0 egress ルールが存在しないためエラーになる。無視してよい。
+        if e.response["Error"]["Code"] != "InvalidPermission.NotFound":
+            raise
 
     ec2.create_tags(
         Resources=[sg_id],

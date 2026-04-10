@@ -50,21 +50,30 @@ def lambda_handler(event, context):
         "AuthorizeSecurityGroupIngress detected. groupId=%s actor=%s", group_id, actor
     )
 
-    # 0.0.0.0/0 を含むルールだけを抽出して取り消す。
-    # 0.0.0.0/0 以外のルール（特定の CIDR 許可など）は誤削除しない。
+    # 0.0.0.0/0（IPv4）または ::/0（IPv6）を含むルールだけを抽出して取り消す。
+    # 特定の CIDR 許可（社内 IP 等）は誤削除しない。
     rules_to_revoke = []
     for rule in ip_permissions_raw:
+        protocol = rule.get("ipProtocol", "-1")
+        port_args = {}
+        # fromPort / toPort は -1 プロトコル（全ポート）の場合は含めない。
+        if protocol != "-1":
+            port_args = {
+                "FromPort": rule.get("fromPort", 0),
+                "ToPort": rule.get("toPort", 65535),
+            }
+
         ip_ranges = rule.get("ipRanges", {}).get("items", [])
         if any(r.get("cidrIp") == "0.0.0.0/0" for r in ip_ranges):
-            perm = {
-                "IpProtocol": rule.get("ipProtocol", "-1"),
-                "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
-            }
-            # fromPort / toPort は -1 プロトコル（全ポート）の場合は含めない。
-            if rule.get("ipProtocol") != "-1":
-                perm["FromPort"] = rule.get("fromPort", 0)
-                perm["ToPort"] = rule.get("toPort", 65535)
-            rules_to_revoke.append(perm)
+            rules_to_revoke.append(
+                {"IpProtocol": protocol, "IpRanges": [{"CidrIp": "0.0.0.0/0"}], **port_args}
+            )
+
+        ipv6_ranges = rule.get("ipv6Ranges", {}).get("items", [])
+        if any(r.get("cidrIpv6") == "::/0" for r in ipv6_ranges):
+            rules_to_revoke.append(
+                {"IpProtocol": protocol, "Ipv6Ranges": [{"CidrIpv6": "::/0"}], **port_args}
+            )
 
     if not rules_to_revoke:
         logger.info("No 0.0.0.0/0 rules found to revoke in groupId=%s", group_id)
