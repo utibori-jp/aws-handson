@@ -12,31 +12,45 @@ resource "aws_sns_topic" "remediation_alerts" {
   }
 }
 
-# Lambda（EventBridge 経由ではなく Lambda 自身）が SNS に Publish するため、
-# リソースポリシーではなく IAM ロールで制御する。
-# このトピックポリシーは Lambda から直接 Publish するため最小限の設定。
-resource "aws_sns_topic_policy" "remediation_alerts" {
-  arn = aws_sns_topic.remediation_alerts.arn
+# SNS へのアクセス制御には2つの方向がある。
+#
+# ① IAM ロール（Lambda 側に付与）：「この Lambda は SNS に Publish できる」
+# ② トピックポリシー（SNS 側に付与）：「この SNS トピックは誰からの Publish を受け入れるか」
+#
+# 同一アカウント内では①だけでも技術的には動く。
+# ただし①のみだと「sns:Publish を持つ IAM エンティティなら誰でも Publish できる」状態になり、
+# トピック側で受け入れるプリンシパルを絞れない。
+# ②で Lambda ロールの ARN を明示することで、このトピックに Publish できるのは
+# この4つの Lambda ロールだけ、という最小権限を実現する。
+# クロスアカウントの場合は①②の両方が必須（片方だけでは動かない）。
+#
+# このモジュールのイベント経路は EventBridge → Lambda → SNS であり、
+# SNS を呼び出すのは Lambda 自身（EventBridge ではない）。
+# EventBridge が SNS を直接呼ぶ構成であれば Principal に events.amazonaws.com を指定するが、
+# ここでは Lambda の IAM ロール ARN を Principal に指定する。
+data "aws_iam_policy_document" "sns_remediation_alerts" {
+  statement {
+    sid    = "AllowLambdaPublish"
+    effect = "Allow"
 
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "AllowLambdaPublish"
-        Effect = "Allow"
-        Principal = {
-          AWS = [
-            aws_iam_role.cancel_kms_deletion.arn,
-            aws_iam_role.revoke_sg_ingress.arn,
-            aws_iam_role.remediate_iam_key.arn,
-            aws_iam_role.isolate_ec2.arn,
-          ]
-        }
-        Action   = "sns:Publish"
-        Resource = aws_sns_topic.remediation_alerts.arn
-      }
-    ]
-  })
+    principals {
+      type = "AWS"
+      identifiers = [
+        aws_iam_role.cancel_kms_deletion.arn,
+        aws_iam_role.revoke_sg_ingress.arn,
+        aws_iam_role.remediate_iam_key.arn,
+        aws_iam_role.isolate_ec2.arn,
+      ]
+    }
+
+    actions   = ["sns:Publish"]
+    resources = [aws_sns_topic.remediation_alerts.arn]
+  }
+}
+
+resource "aws_sns_topic_policy" "remediation_alerts" {
+  arn    = aws_sns_topic.remediation_alerts.arn
+  policy = data.aws_iam_policy_document.sns_remediation_alerts.json
 }
 
 # メールサブスクリプション（alert_email が指定された場合のみ作成）。
