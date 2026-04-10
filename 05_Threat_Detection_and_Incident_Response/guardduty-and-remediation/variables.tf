@@ -21,6 +21,11 @@ variable "project_name" {
   default     = "scs-handson"
 }
 
+variable "learner_account_id" {
+  description = "AWS account ID of the learner member account (from 00_Baseline: terraform output learner_account_id)"
+  type        = string
+}
+
 variable "alert_email" {
   description = "Email address to receive remediation notifications (leave empty to skip subscription)"
   type        = string

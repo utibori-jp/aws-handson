@@ -14,6 +14,10 @@ provider "aws" {
   region  = var.region
   profile = var.aws_profile
 
+  assume_role {
+    role_arn = "arn:aws:iam::${var.learner_account_id}:role/OrganizationAccountAccessRole"
+  }
+
   default_tags {
     tags = {
       Project     = var.project_name
