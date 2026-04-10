@@ -2,6 +2,20 @@
 # guardduty.tf — guardduty-and-remediation
 # GuardDuty Detector の有効化とカスタム脅威インテリジェンスの登録。
 #
+# 【GuardDuty はフルマネージド IDS（SCS 最重要ポイント）】
+# GuardDuty は「検知ロジックをユーザーが定義する」サービスではない。
+# 機械学習・脅威インテリジェンス・ルールセットを AWS が丸ごと管理するフルマネージド検知エンジンで、
+# ユーザーが設定できるのは「detector の有効化」「ThreatIntelSet」「IPSet」だけ。
+# 「この挙動を異常とみなせ」というカスタム検知ロジックは定義できない。
+#
+# この特性が試験で問われる場面：
+# - 「特定の API 操作を即時検知したい」→ GuardDuty ではなく CloudTrail → EventBridge で自前ルールを書く
+# - 「侵害されたキーの不正利用を検知したい」→ GuardDuty の得意領域（振る舞いの異常）
+#
+# GuardDuty（IDS）と SIEM の違い：
+# - SIEM（Security Hub / Splunk 等）：ログを集めてユーザーが検索・ルール定義・相関分析する
+# - GuardDuty：データソースを AWS が分析して finding だけ渡す。ログを直接見る必要がない
+#
 # 【GuardDuty の検知ソース】
 # GuardDuty は以下のデータソースを自動的に分析して脅威を検知する：
 # - CloudTrail 管理イベント（API 呼び出しの異常）
@@ -13,6 +27,36 @@
 # GuardDuty は新規 finding をまとめて EventBridge に発行する。
 # FIFTEEN_MINUTES: 15 分ごと（ハンズオンで素早く確認できる設定）
 # ONE_HOUR / SIX_HOURS: 本番向け（コスト最適化）
+#
+# 【確認ポイント】
+# apply 後、以下のコマンドで各リソースを確認する。
+# ※ DETECTOR_ID は terraform output -raw guardduty_detector_id で取得する。
+#
+# 1. ThreatIntelSet・IPSet の登録確認
+#    DETECTOR_ID=$(terraform output -raw guardduty_detector_id)
+#
+#    aws guardduty list-threat-intel-sets \
+#      --detector-id "$DETECTOR_ID" \
+#      --profile learner-admin --region ap-northeast-1
+#
+#    aws guardduty list-ip-sets \
+#      --detector-id "$DETECTOR_ID" \
+#      --profile learner-admin --region ap-northeast-1
+#
+# 2. GuardDuty IAM サンプル finding を生成する（→ remediate-iam-key Lambda がトリガーされる）
+#    aws guardduty create-sample-findings \
+#      --detector-id "$DETECTOR_ID" \
+#      --finding-types "UnauthorizedAccess:IAMUser/MaliciousIPCaller" \
+#      --profile learner-admin --region ap-northeast-1
+#    # finding_publishing_frequency = FIFTEEN_MINUTES のため 15 分以内に EventBridge へ発行される。
+#    # サンプルはダミーユーザーのため IAM キー無効化は not_found になる（SNS 通知は届かない）。
+#
+# 3. GuardDuty EC2 サンプル finding を生成する（→ isolate-ec2 Lambda がトリガーされる）
+#    aws guardduty create-sample-findings \
+#      --detector-id "$DETECTOR_ID" \
+#      --finding-types "CryptoCurrency:EC2/BitcoinTool.B!DNS" \
+#      --profile learner-admin --region ap-northeast-1
+#    # サンプルのダミーインスタンス ID は存在しないため not_found になる。
 # =============================================================================
 
 resource "aws_guardduty_detector" "main" {
@@ -30,7 +74,24 @@ resource "aws_guardduty_detector" "main" {
 # ---------------------------------------------------------------------------
 # カスタム脅威インテリジェンスリスト（ThreatIntelSet）
 # ---------------------------------------------------------------------------
-
+#
+# 【なぜ S3 の IP リストを渡すのか】
+# GuardDuty は AWS が管理する脅威インテリジェンス（Tor ノード・既知の C2 サーバー等）を
+# デフォルトで持っており、これらとの通信を自動的に検知する。
+# ThreatIntelSet はそれに「自社独自の悪い IP リスト」を追加する仕組みで、
+# GuardDuty が能動的に IP をスキャンするのではなく、
+# 「このリストに載っている IP と通信したら finding を出せ」というシグナルを渡す。
+#
+# 典型的なユースケース：
+# - 過去のインシデントで特定した攻撃者 IP
+# - ISAC（業界の脅威情報共有組織）から配布された IoC リスト
+# - 自社レッドチームの演習用 IP（テスト検知の確認）
+#
+# 【S3 ファイルを更新しても自動反映されない点に注意】
+# Terraform で location を変えず中身だけ更新した場合、GuardDuty は変更を検知しない。
+# 本番で IP リストを定期更新する場合は、update-threat-intel-set API を呼ぶ
+# Lambda + EventBridge スケジュールを別途用意するのが一般的。
+#
 # S3 上の IP リストを GuardDuty に登録する。
 # このリストの IP と通信があると GuardDuty が finding を生成する。
 # ハンズオンではダミー IP のため実際には finding は生成されないが、
@@ -53,9 +114,11 @@ resource "aws_guardduty_threatintelset" "custom" {
 # 信頼 IP セット（IPSet）
 # ---------------------------------------------------------------------------
 
-# 自社ネットワーク等、誤検知させたくない IP を GuardDuty に登録する。
-# このリストに登録した IP からの通信は finding を生成しない。
-# 本番では自社オフィス IP・VPN IP 等を登録する。
+# ThreatIntelSet のホワイトリスト版。
+# このリストに登録した IP からの通信は finding を生成しない（除外扱い）。
+# 登録しないと、社内ネットワークからの通信や監視ツールのポーリングが
+# finding として上がりノイズになる。
+# 本番では自社オフィス IP・VPN IP・セキュリティ監視サーバー等を登録する。
 resource "aws_guardduty_ipset" "trusted" {
   activate    = true
   detector_id = aws_guardduty_detector.main.id

@@ -2,6 +2,13 @@
 # lambda.tf — guardduty-and-remediation
 # Lambda 関数定義。archive_file でソースを zip 化して直接デプロイする。
 # 外部ビルドツール不要で terraform apply のみで完結する。
+#
+# 【Lambda の実行権限は IAM ロール経由】
+# Lambda 関数に IAM ポリシーを直接アタッチする仕組みはない。
+# aws_lambda_function の role に実行ロールの ARN を渡すことで、
+# Lambda 起動時に裏側で sts:AssumeRole が走り、そのロールの権限で AWS API を呼ぶ。
+# これは EC2 インスタンスプロファイル・ECS タスクロール等と同じ「サービスロール」パターン。
+# 信頼ポリシーの Principal: lambda.amazonaws.com がその許可の宣言にあたる。
 # =============================================================================
 
 # ---------------------------------------------------------------------------
