@@ -39,35 +39,38 @@ resource "aws_s3_bucket_public_access_block" "threat_intel" {
 
 # GuardDuty サービスがバケットからリストを読み込めるようにバケットポリシーを設定する。
 # GuardDuty はサービスリンクロールで S3 にアクセスするため、このポリシーが必要。
+data "aws_iam_policy_document" "threat_intel_bucket" {
+  statement {
+    sid    = "AllowGuardDutyRead"
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["guardduty.amazonaws.com"]
+    }
+
+    actions = [
+      "s3:GetObject",
+      "s3:GetBucketLocation",
+      "s3:ListBucket",
+    ]
+
+    resources = [
+      aws_s3_bucket.threat_intel.arn,
+      "${aws_s3_bucket.threat_intel.arn}/*",
+    ]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [local.account_id]
+    }
+  }
+}
+
 resource "aws_s3_bucket_policy" "threat_intel" {
   bucket = aws_s3_bucket.threat_intel.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "AllowGuardDutyRead"
-        Effect = "Allow"
-        Principal = {
-          Service = "guardduty.amazonaws.com"
-        }
-        Action = [
-          "s3:GetObject",
-          "s3:GetBucketLocation",
-          "s3:ListBucket",
-        ]
-        Resource = [
-          aws_s3_bucket.threat_intel.arn,
-          "${aws_s3_bucket.threat_intel.arn}/*",
-        ]
-        Condition = {
-          StringEquals = {
-            "aws:SourceAccount" = local.account_id
-          }
-        }
-      }
-    ]
-  })
+  policy = data.aws_iam_policy_document.threat_intel_bucket.json
 
   depends_on = [aws_s3_bucket_public_access_block.threat_intel]
 }
