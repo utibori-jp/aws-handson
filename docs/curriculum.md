@@ -37,8 +37,3 @@
 
 * guardduty-and-remediation: GuardDutyをカスタムThreatIntelSet（既知悪性IPリスト）・IPSet（誤検知除外リスト）で拡張し、検知から自動修復までを一体で構築する。CloudTrail起点ではKMSキー削除予約・SG全開放を「発生した瞬間」にEventBridgeが捕まえてLambdaが即時差し戻す。GuardDuty起点では侵害されたIAM認証情報の使用・EC2の不正通信を受けてキー無効化・SG隔離を実行する。EC2をTerminateではなくIsolate（隔離SGに付け替え）する設計はSCS頻出のフォレンジック証拠保全パターン。
 * macie-sensitive-data: GuardDutyが「何が起きたか」（振る舞いの異常）を検知するのに対し、Macieは「何が入っているか」（PII・金融データ）をS3オブジェクトの内容から静的に検出する。クレジットカード番号・SSN等のダミー機密データを含むCSVをS3に配置し、ONE_TIMEジョブで finding生成からEventBridge→SNS通知までのパイプラインを体験する。
-
-## 06_Zero_Trust_Architecture (ゼロトラストアーキテクチャ)
-
-* apigw-iam-auth: API GatewayのIAM認証（AWS Signature V4）を利用し、ネットワーク境界に依存しないマイクロサービスへのリクエスト認可を検証。
-* verified-access: AWS Verified Accessを構築し、デバイスの状態やID属性に基づくVPNレスなプライベートアプリへのアクセス制御を検証。

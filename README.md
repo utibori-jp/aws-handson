@@ -55,4 +55,3 @@ SCSの各ドメインに基づき、以下のセクションで構築・検証�
 * **[03. Data Protection](https://www.google.com/search?q=./03_Data_Protection)**: KMSとS3を用いた「データの暗号化」と改ざん防止。
 * **[04. Monitoring](https://www.google.com/search?q=./04_Security_Logging_and_Monitoring)**: GuardDuty等の検知系サービスを用いた「アラート発火実験」。
 * **[05. Incident Response](https://www.google.com/search?q=./05_Threat_Detection_and_Incident_Response)**: ConfigやLambdaを用いた「自動修復（Auto Remediation）」の実装。
-* **[06. Zero Trust](https://www.google.com/search?q=./06_Zero_Trust_Architecture)**: Verified Access等を用いた、境界に依存しない「次世代のアクセス制御」。
