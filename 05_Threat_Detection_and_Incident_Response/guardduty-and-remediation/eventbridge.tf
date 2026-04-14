@@ -21,7 +21,7 @@
 # 【確認ポイント】
 # CloudTrail 起点の修復を手動でトリガーして動作を確認する。
 #
-# ① KMS キー削除予約 → cancel-kms-deletion Lambda の修復確認
+# 1. KMS キー削除予約 → cancel-kms-deletion Lambda の修復確認
 #    # テスト用 KMS キーを作成する
 #    KEY_ID=$(aws kms create-key \
 #      --description "test-key-for-guardduty-remediation" \
@@ -41,7 +41,7 @@
 #    # → "CancelKeyDeletion succeeded" および "EnableKey succeeded" が記録されることを確認する
 #    # → alert_email を設定した場合は SNS 通知メールが届くことを確認する
 #
-# ② SG 全開放 → revoke-sg-ingress Lambda の修復確認
+# 2. SG 全開放 → revoke-sg-ingress Lambda の修復確認
 #    # デフォルト VPC の ID を取得してテスト用 SG を作成する
 #    VPC_ID=$(aws ec2 describe-vpcs \
 #      --filters Name=isDefault,Values=true \
@@ -71,10 +71,31 @@
 #    aws logs tail "/aws/lambda/scs-handson-revoke-sg-ingress" \
 #      --follow --profile learner-admin --region ap-northeast-1
 #    # → "Revoked 1 dangerous rule(s)" が記録されることを確認する
+#
+# 3. 後片付け（terraform destroy の後に実行する）
+#    # KMS キー：Lambda がキャンセルして Enabled 状態に戻すため、destroy 後も残り続ける。
+#    # 放置すると $1/月/キー のコストが発生する（KMS は即時削除不可・最短 7 日）。
+#    aws kms schedule-key-deletion \
+#      --key-id "$KEY_ID" \
+#      --pending-window-in-days 7 \
+#      --profile learner-admin --region ap-northeast-1
+#    # 削除予約の確認（KeyState が PendingDeletion になっていることを確認する）
+#    aws kms describe-key --key-id "$KEY_ID" \
+#      --profile learner-admin --region ap-northeast-1 \
+#      --query 'KeyMetadata.{KeyState: KeyState, DeletionDate: DeletionDate}'
+#
+#    # テスト用 SG：terraform destroy の管理外なので手動で削除する。
+#    aws ec2 delete-security-group \
+#      --group-id "$SG_ID" \
+#      --profile learner-admin --region ap-northeast-1
+#    # 削除の確認（InvalidGroup.NotFound エラーが返れば削除済み）
+#    aws ec2 describe-security-groups \
+#      --group-ids "$SG_ID" \
+#      --profile learner-admin --region ap-northeast-1
 # =============================================================================
 
 # ---------------------------------------------------------------------------
-# CloudTrail 起点 ①：KMS キー削除予約 → cancel_kms_deletion Lambda
+# CloudTrail 起点 1：KMS キー削除予約 → cancel_kms_deletion Lambda
 # ---------------------------------------------------------------------------
 
 resource "aws_cloudwatch_event_rule" "kms_key_deletion" {
@@ -104,7 +125,7 @@ resource "aws_cloudwatch_event_target" "kms_deletion_to_lambda" {
 }
 
 # ---------------------------------------------------------------------------
-# CloudTrail 起点 ②：SG 全開放 → revoke_sg_ingress Lambda
+# CloudTrail 起点 2：SG 全開放 → revoke_sg_ingress Lambda
 # ---------------------------------------------------------------------------
 
 resource "aws_cloudwatch_event_rule" "sg_ingress_all_open" {
@@ -137,7 +158,7 @@ resource "aws_cloudwatch_event_target" "sg_ingress_to_lambda" {
 }
 
 # ---------------------------------------------------------------------------
-# GuardDuty 起点 ③：IAM 侵害系フィンディング → remediate_iam_key Lambda
+# GuardDuty 起点 3：IAM 侵害系フィンディング → remediate_iam_key Lambda
 # ---------------------------------------------------------------------------
 
 resource "aws_cloudwatch_event_rule" "guardduty_iam_finding" {
@@ -171,7 +192,7 @@ resource "aws_cloudwatch_event_target" "guardduty_iam_to_lambda" {
 }
 
 # ---------------------------------------------------------------------------
-# GuardDuty 起点 ④：EC2 侵害系フィンディング → isolate_ec2 Lambda
+# GuardDuty 起点 4：EC2 侵害系フィンディング → isolate_ec2 Lambda
 # ---------------------------------------------------------------------------
 
 resource "aws_cloudwatch_event_rule" "guardduty_ec2_finding" {

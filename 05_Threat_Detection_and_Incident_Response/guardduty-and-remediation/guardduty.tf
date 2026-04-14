@@ -49,14 +49,26 @@
 #      --finding-types "UnauthorizedAccess:IAMUser/MaliciousIPCaller" \
 #      --profile learner-admin --region ap-northeast-1
 #    # finding_publishing_frequency = FIFTEEN_MINUTES のため 15 分以内に EventBridge へ発行される。
-#    # サンプルはダミーユーザーのため IAM キー無効化は not_found になる（SNS 通知は届かない）。
+#
+#    # Lambda ログで起動と修復試行を確認する
+#    aws logs tail "/aws/lambda/scs-handson-remediate-iam-key" \
+#      --follow --profile learner-admin --region ap-northeast-1
+#    # サンプルはダミーユーザーのため以下のどちらかのメッセージが出る（SNS 通知は届かない）：
+#    # → "No accessKeyDetails found in finding ..." （finding にキー情報なし）
+#    # → "User '...' does not exist. This is expected when using GuardDuty sample findings"
 #
 # 3. GuardDuty EC2 サンプル finding を生成する（→ isolate-ec2 Lambda がトリガーされる）
 #    aws guardduty create-sample-findings \
 #      --detector-id "$DETECTOR_ID" \
-#      --finding-types "CryptoCurrency:EC2/BitcoinTool.B!DNS" \
+#      --finding-types 'CryptoCurrency:EC2/BitcoinTool.B!DNS' \
 #      --profile learner-admin --region ap-northeast-1
-#    # サンプルのダミーインスタンス ID は存在しないため not_found になる。
+#    # ※ finding-types の値に ! が含まれるためシングルクォートで囲む（bash のヒストリ展開を回避）
+#
+#    # Lambda ログで起動とインスタンス探索を確認する
+#    aws logs tail "/aws/lambda/scs-handson-isolate-ec2" \
+#      --follow --profile learner-admin --region ap-northeast-1
+#    # → "Instance i-xxxx not found. This is expected when using GuardDuty sample findings"
+#    #   サンプルのダミーインスタンス ID は存在しないため not_found になる（SNS 通知は届かない）。
 # =============================================================================
 
 resource "aws_guardduty_detector" "main" {
