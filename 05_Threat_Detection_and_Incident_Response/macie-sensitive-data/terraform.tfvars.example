@@ -1,0 +1,11 @@
+# terraform.tfvars.example
+# このファイルをコピーして terraform.tfvars を作成し、実際の値を入力してください。
+# terraform.tfvars は .gitignore 対象です。コミットしないでください。
+
+# Learner アカウントへ直接デプロイするプロファイルを指定する。
+# IAM Identity Center で Learner アカウントに割り当てたプロファイルを使う。
+aws_profile = "learner-admin"
+
+# Macie finding を SNS 経由でメール受信するアドレス（空文字にすると通知なし）。
+# apply 後に確認メールが届くので「Confirm subscription」をクリックする。
+# alert_email = "your-email@example.com"

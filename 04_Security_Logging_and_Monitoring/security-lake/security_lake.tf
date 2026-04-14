@@ -103,6 +103,20 @@
 #      --profile learner-admin \
 #      --query 'dataLakes[0].s3BucketArn' --output text | sed 's|arn:aws:s3:::||')
 #    aws s3 rb s3://$BUCKET --force --profile learner-admin
+#
+# ⑤ terraform destroy 後、Security Lake が自動作成した EventBridge ルールを手動削除する
+#    （Security Lake は Glue パーティション更新用の EventBridge ルールを自動生成するが、
+#      terraform destroy では削除されないため手動で削除する）
+#    RULE=SecurityLake_GlueTableUpdaterRule_1_0_ap-northeast-1
+#    aws events remove-targets \
+#      --rule $RULE \
+#      --ids "$RULE" \
+#      --profile learner-admin
+#    aws events delete-rule \
+#      --name $RULE \
+#      --profile learner-admin
+#    # 削除確認
+#    aws events list-rules --name-prefix SecurityLake --profile learner-admin --query 'Rules[].Name'
 # =============================================================================
 
 # ---
