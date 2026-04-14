@@ -58,13 +58,21 @@ def lambda_handler(event, context):
     ec2 = boto3.client("ec2")
 
     # インスタンスの VPC ID を取得する（隔離 SG を同じ VPC 内に作成するため）。
-    instances = ec2.describe_instances(InstanceIds=[instance_id])
+    # 存在しないインスタンス ID を渡すと DescribeInstances は空ではなく ClientError を投げる。
+    # 未捕捉にすると Lambda が失敗扱いになり自動リトライが走るため、ここで捕捉して正常終了させる。
+    try:
+        instances = ec2.describe_instances(InstanceIds=[instance_id])
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "InvalidInstanceID.NotFound":
+            logger.warning(
+                f"Instance {instance_id} not found. "
+                "This is expected when using GuardDuty sample findings (dummy instances)."
+            )
+            return {"status": "not_found", "instance_id": instance_id}
+        raise
     reservations = instances.get("Reservations", [])
     if not reservations:
-        logger.warning(
-            f"Instance {instance_id} not found. "
-            "This is expected when using GuardDuty sample findings (dummy instances)."
-        )
+        logger.warning(f"Instance {instance_id} not found (empty Reservations). Skipping.")
         return {"status": "not_found", "instance_id": instance_id}
 
     instance = reservations[0]["Instances"][0]
